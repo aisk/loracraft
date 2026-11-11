@@ -23,7 +23,7 @@ jobs:
       - name: Build the web UI
         working-directory: web
         run: npm ci && npm run build
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       - name: Check that the tag matches the package version
         if: github.ref_type == 'tag'
         run: test "v$(uv version --short)" = "$GITHUB_REF_NAME"
@@ -46,7 +46,7 @@ jobs:
         with:
           name: dist
           path: dist
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv publish
 
   github-release:
