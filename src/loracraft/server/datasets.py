@@ -110,7 +110,7 @@ def _refuse_while_training(conn: sqlite3.Connection, project_id: int) -> None:
         "SELECT 1 FROM runs WHERE project_id = ? AND status IN ('queued', 'running')", (project_id,)
     ).fetchone()
     if active:
-        raise HTTPException(409, "这个项目有训练正在进行或排队，先等它结束或停止它")
+        raise HTTPException(409, "This project has a training running or queued; wait for it to finish or stop it")
 
 
 # --- Images ----------------------------------------------------------------

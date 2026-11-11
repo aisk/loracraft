@@ -81,6 +81,12 @@
   --font-mono: 'JetBrains Mono Variable', 'Cascadia Code', Consolas, ui-monospace, monospace;
 }
 
+/* Japanese needs Japanese glyph forms: the Chinese fonts above would draw its kanji the Chinese way. */
+:root:lang(ja) {
+  --font-sans: 'Inter Variable', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo UI', 'Meiryo', system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo UI', system-ui, sans-serif;
+}
+
 /* Names the components use, defined once in terms of the theme. */
 :root {
   --bg: var(--color-base-200);

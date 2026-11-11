@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Images, Square } from '@lucide/svelte'
   import { formatDuration, parseSampleName, runApi, sampleUrl, type Run } from './api'
+  import { t } from './i18n/index.svelte'
 
   let { run }: { run: Run } = $props()
 
@@ -48,19 +49,20 @@
   )
 
   const headline = $derived.by(() => {
-    if (stopping) return '正在停止，手头这一步做完就停下'
-    if (run.status === 'queued') return '排队中，等前一个训练结束'
+    const m = t().monitor
+    if (stopping) return m.stopping
+    if (run.status === 'queued') return m.queued
     switch (p.phase) {
       case 'loading_model':
-        return '正在加载底模'
+        return m.loadingModel
       case 'caching_latents':
-        return `正在预处理图片 ${p.cache_done} / ${run.num_images}`
+        return m.caching(p.cache_done, run.num_images)
       case 'sampling':
-        return p.step === 0 ? '正在生成训练前的对照图' : `第 ${p.epoch} 轮结束，正在生成预览图`
+        return p.step === 0 ? m.baseline : m.sampling(p.epoch)
       case 'training':
-        return `正在训练第 ${Math.max(1, p.epoch)} / ${run.config.epochs} 轮`
+        return m.training(Math.max(1, p.epoch), run.config.epochs)
       default:
-        return '正在启动'
+        return m.starting
     }
   })
 
@@ -91,7 +93,7 @@
   })
 
   async function stop() {
-    if (!confirm('停止这次训练？已经保存的轮次会保留。')) return
+    if (!confirm(t().monitor.confirmStop)) return
     stopping = true
     try {
       await runApi.stop(run.id)
@@ -112,13 +114,13 @@
       <h2>{headline}</h2>
       <p class="muted num">
         {#if p.total_steps}
-          {p.step} / {p.total_steps} 步{#if remaining !== null && p.step > 0}，还需约 {formatDuration(remaining)}（不含出图）{/if}
+          {t().monitor.steps(p.step, p.total_steps)}{#if remaining !== null && p.step > 0}{t().monitor.remaining(formatDuration(remaining))}{/if}
         {:else}
-          训练 {run.name}，{run.num_images} 张图片
+          {t().monitor.runLine(run.name, run.num_images)}
         {/if}
       </p>
     </div>
-    <button class="btn btn-sm btn-outline btn-error" disabled={stopping} onclick={stop}><Square />停止训练</button>
+    <button class="btn btn-sm btn-outline btn-error" disabled={stopping} onclick={stop}><Square />{t().monitor.stop}</button>
   </header>
 
   <!-- One track for the whole training; the notches are the ends of the rounds. -->
@@ -138,7 +140,7 @@
               class={['btn btn-xs', epoch === shownEpoch ? 'btn-primary' : 'btn-ghost']}
               onclick={() => (viewEpoch = epoch === epochs.at(-1) ? null : epoch)}
             >
-              {epoch === 0 ? '训练前' : `第 ${epoch} 轮`}
+              {t().common.round(epoch)}
             </button>
           {/each}
         </div>
@@ -146,7 +148,7 @@
           {#each byEpoch.get(shownEpoch) ?? [] as name, index (index)}
             {#if name}
               <figure>
-                <img src={sampleUrl(run.id, name)} alt="预览图 {index + 1}" />
+                <img src={sampleUrl(run.id, name)} alt={t().monitor.sampleAlt(index + 1)} />
                 <figcaption title={run.config.sample_prompts[index]?.prompt}>
                   {run.config.sample_prompts[index]?.prompt}
                 </figcaption>
@@ -159,8 +161,8 @@
           <Images />
           <p class="muted">
             {run.config.sample_prompts.length
-              ? '预览图会出现在这里：先是一组训练前的对照图，之后每轮一组。'
-              : '这次训练没有设置预览提示词。'}
+              ? t().monitor.samplesComing
+              : t().monitor.noPrompts}
           </p>
         </div>
       {/if}
@@ -170,7 +172,7 @@
       <div class="facts">
         <div>
           <span class="figure num">{p.seconds_per_step ? p.seconds_per_step.toFixed(2) : '—'}</span>
-          <span class="muted">秒 / 步</span>
+          <span class="muted">{t().monitor.secondsPerStep}</span>
         </div>
         <div>
           <span class="figure num">{losses.at(-1)?.toFixed(3) ?? '—'}</span>
@@ -179,22 +181,22 @@
       </div>
 
       {#if chart}
-        <svg viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="loss 曲线">
+        <svg viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label={t().monitor.lossChart}>
           <polyline points={chart.points} />
         </svg>
-        <p class="muted num">最低 {chart.min.toFixed(4)}，最高 {chart.max.toFixed(4)}</p>
+        <p class="muted num">{t().monitor.lossRange(chart.min.toFixed(4), chart.max.toFixed(4))}</p>
       {/if}
-      <p class="muted">Loss 只说明模型在拟合，不能说明效果好坏。哪一轮最好，主要看预览图。</p>
+      <p class="muted">{t().monitor.lossNote}</p>
 
-      <h3>这次的设置</h3>
+      <h3>{t().monitor.settingsTitle}</h3>
       <dl>
-        <dt>底模</dt>
+        <dt>{t().monitor.baseModel}</dt>
         <dd>{run.config.base_model.split(/[\\/]/).pop()?.replace(/\.safetensors$/, '')}</dd>
-        <dt>图片</dt>
-        <dd class="num">{run.num_images} 张</dd>
-        <dt>容量</dt>
+        <dt>{t().monitor.images}</dt>
+        <dd class="num">{t().monitor.imageCount(run.num_images)}</dd>
+        <dt>{t().monitor.capacity}</dt>
         <dd class="num">rank {run.config.network_dim}</dd>
-        <dt>学习率</dt>
+        <dt>{t().monitor.lr}</dt>
         <dd class="num">{run.config.unet_lr}</dd>
       </dl>
     </aside>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { runApi, type Settings } from './api'
+  import { t } from './i18n/index.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
 
@@ -32,41 +33,53 @@
 <dialog class="modal" bind:this={dialog} {onclose}>
   <div class="modal-box">
   <form onsubmit={submit}>
-    <h2>设置</h2>
+    <h2>{t().settings.title}</h2>
     {#if settings}
       <label>
-        <span>底模所在的文件夹</span>
-        <textarea class="textarea" rows="2" placeholder="每行一个文件夹" bind:value={modelDirs}></textarea>
+        <span>{t().settings.modelDirs}</span>
+        <textarea class="textarea" rows="2" placeholder={t().settings.modelDirsPlaceholder} bind:value={modelDirs}></textarea>
       </label>
       <label>
-        <span>LoRA 导出到</span>
-        <input class="input input-sm" type="text" placeholder="例如 ComfyUI 的 models\loras" bind:value={settings.export_dir} />
+        <span>{t().settings.exportDir}</span>
+        <input class="input input-sm" type="text" placeholder={t().settings.exportDirPlaceholder} bind:value={settings.export_dir} />
       </label>
 
-      <h3>自动标注用的视觉模型</h3>
-      <label><span>服务地址</span><input class="input input-sm" type="text" placeholder="http://localhost:11434/v1" bind:value={settings.tagger_base_url} /></label>
-      <label><span>模型名</span><input class="input input-sm" type="text" bind:value={settings.tagger_model} /></label>
-      <label><span>API Key</span><input class="input input-sm" type="text" placeholder="本机模型可留空" bind:value={settings.tagger_api_key} /></label>
-      <p class="help">API Key 以明文保存在本机的数据目录里，不会发送到模型服务以外的地方。</p>
+      <h3>{t().settings.taggerTitle}</h3>
+      <label><span>{t().settings.baseUrl}</span><input class="input input-sm" type="text" placeholder="http://localhost:11434/v1" bind:value={settings.tagger_base_url} /></label>
+      <label><span>{t().settings.model}</span><input class="input input-sm" type="text" bind:value={settings.tagger_model} /></label>
+      <label><span>{t().settings.apiKey}</span><input class="input input-sm" type="text" placeholder={t().settings.apiKeyPlaceholder} bind:value={settings.tagger_api_key} /></label>
+      <p class="help">{t().settings.apiKeyHelp}</p>
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
     <div class="actions">
-      <button class="btn btn-sm" type="button" onclick={onclose}>取消</button>
-      <button class="btn btn-sm btn-primary" disabled={!settings}>保存</button>
+      <button class="btn btn-sm" type="button" onclick={onclose}>{t().common.cancel}</button>
+      <button class="btn btn-sm btn-primary" disabled={!settings}>{t().common.save}</button>
     </div>
   </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>关闭</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{t().common.close}</button></form>
 </dialog>
 
 <style>
   .modal-box {
     max-width: 560px;
   }
+  /* Two columns: labels as wide as the longest one in the current language, then the fields. */
   .modal-box form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: var(--space-3) var(--space-3);
+  }
+  .modal-box form > :global(*) {
+    grid-column: 1 / -1;
+  }
+  .modal-box form > label {
+    display: contents;
+  }
+  label :global(input),
+  label :global(textarea) {
+    grid-column: 2;
   }
   h2 {
     font-size: var(--text-xl);
@@ -76,13 +89,8 @@
     font-size: var(--text-md);
     margin-top: var(--space-2);
   }
-  label {
-    display: grid;
-    grid-template-columns: 128px 1fr;
-    align-items: start;
-    gap: var(--space-2);
-  }
   label span {
+    grid-column: 1;
     color: var(--text-2);
     line-height: var(--row-height);
   }

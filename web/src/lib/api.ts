@@ -1,3 +1,5 @@
+import { t } from './i18n/index.svelte'
+
 export interface Project {
   id: number
   name: string
@@ -33,9 +35,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const detail = await response.json().catch(() => null)
     const error = new Error(typeof detail?.detail === 'string' ? detail.detail : `${response.status} ${response.statusText}`)
     error.name = '' // so that String(error) is the message alone, ready to show
-    throw error
+    throw Object.assign(error, { status: response.status })
   }
   return response.json()
+}
+
+/**
+ * An error ready to show. `conflict` replaces the server's text for HTTP 409, which the server
+ * sends when something is still training: the client knows the situation and can say it in the
+ * user's language.
+ */
+export function errorText(error: unknown, conflict?: string): string {
+  if (conflict && (error as { status?: number })?.status === 409) return conflict
+  return String(error)
 }
 
 function json(method: string, body: unknown): RequestInit {
@@ -213,10 +225,11 @@ export const checkpointEpoch = (name: string) => Number(/-(\d+)\.safetensors$/.e
 
 export function formatDuration(seconds: number) {
   if (!isFinite(seconds) || seconds < 0) return '—'
-  if (seconds < 90) return `${Math.round(seconds)} 秒`
+  const m = t().common
+  if (seconds < 90) return m.seconds(Math.round(seconds))
   const minutes = Math.round(seconds / 60)
-  if (minutes < 90) return `${minutes} 分钟`
-  return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
+  if (minutes < 90) return m.minutes(minutes)
+  return m.hoursMinutes(Math.floor(minutes / 60), minutes % 60)
 }
 
 // --- Auto-captioning ---

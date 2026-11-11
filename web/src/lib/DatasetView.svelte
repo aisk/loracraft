@@ -1,7 +1,8 @@
 <script lang="ts">
   import { ArrowRight, Check, ImagePlus, Search, Sparkles, Trash2, TriangleAlert, X } from '@lucide/svelte'
-  import { api, fileUrl, splitTags, thumbUrl, type DatasetImage, type ImportResult, type Project } from './api'
-  import { COMMON_TIPS, CONSTANT_ADVICE, GUIDES, SMALL_SIDE, constantTags, countAdvice, countRange } from './guidance'
+  import { api, errorText, fileUrl, splitTags, thumbUrl, type DatasetImage, type ImportResult, type Project } from './api'
+  import { SMALL_SIDE, constantAdvice, constantTags, countAdvice, countRange, kindNoun, kindTips } from './guidance'
+  import { around, t } from './i18n/index.svelte'
   import TagChips from './TagChips.svelte'
   import TaggingPanel from './TaggingPanel.svelte'
 
@@ -16,6 +17,7 @@
   let thumbSize = $state(168)
   let busy = $state('')
   let message = $state('')
+  let failed = $state(false) // whether `message` reports an error
   let dragging = $state(false)
   let folderPath = $state('')
   let showImport = $state(false)
@@ -52,7 +54,8 @@
   const selectedImages = $derived(images.filter((i) => selected.has(i.id)))
 
   // Is the dataset ready to train on?
-  const guide = $derived(GUIDES[project.kind])
+  const noun = $derived(kindNoun(project.kind))
+  const tips = $derived(kindTips(project.kind))
   const count = $derived(countAdvice(project.kind, images.length))
   const constant = $derived(constantTags(project, images))
   const missingTrigger = $derived(
@@ -80,13 +83,14 @@
     images = images.map((i) => byId.get(i.id) ?? i)
   }
 
-  async function run(label: string, action: () => Promise<void>) {
+  async function run(label: string, action: () => Promise<void>, conflict?: string) {
     busy = label
     message = ''
     try {
       await action()
     } catch (error) {
-      message = String(error)
+      message = errorText(error, conflict)
+      failed = true
     } finally {
       busy = ''
     }
@@ -133,21 +137,18 @@
   function reportImport(result: ImportResult) {
     images = [...images, ...result.added]
     selected = new Set(result.added.map((i) => i.id))
-    message =
-      `已导入 ${result.added.length} 张` +
-      (result.skipped_duplicates ? `，跳过 ${result.skipped_duplicates} 张重复图片` : '') +
-      (result.unreadable.length ? `，${result.unreadable.length} 个文件打不开：${result.unreadable.slice(0, 5).join('、')}` : '') +
-      (result.unreadable.length > 5 ? ' 等' : '')
+    message = t().dataset.imported(result.added.length, result.skipped_duplicates, result.unreadable)
+    failed = false
     onchange()
   }
 
   const upload = (files: File[]) =>
-    run('正在导入…', async () => {
+    run(t().dataset.importing, async () => {
       if (files.length) reportImport(await api.uploadImages(project.id, files))
     })
 
   const importFromFolder = () =>
-    run('正在导入…', async () => {
+    run(t().dataset.importing, async () => {
       reportImport(await api.importFolder(project.id, folderPath.trim()))
       showImport = false
     })
@@ -160,14 +161,18 @@
 
   function deleteSelected() {
     const ids = [...selected]
-    if (!confirm(`从数据集中删除 ${ids.length} 张图片？原始文件不受影响，但项目内的副本和标注会被删除。`)) return
-    run('正在删除…', async () => {
-      await api.deleteImages(ids)
-      const deleted = new Set(ids)
-      images = images.filter((i) => !deleted.has(i.id))
-      selected = new Set([...selected].filter((id) => !deleted.has(id)))
-      onchange()
-    })
+    if (!confirm(t().dataset.confirmDelete(ids.length))) return
+    run(
+      t().dataset.deleting,
+      async () => {
+        await api.deleteImages(ids)
+        const deleted = new Set(ids)
+        images = images.filter((i) => !deleted.has(i.id))
+        selected = new Set([...selected].filter((id) => !deleted.has(id)))
+        onchange()
+      },
+      t().common.projectBusy,
+    )
   }
 
   // --- Tag editing ---
@@ -203,14 +208,14 @@
   <!-- Left: what is in the captions, and what needs attention -->
   <section class="filters">
     {#if uncaptionedCount || smallCount}
-      <div class="panel-head"><span class="label-quiet">需要留意</span></div>
+      <div class="panel-head"><span class="label-quiet">{t().dataset.needsAttention}</span></div>
       {#if uncaptionedCount}
         <button
           class="issue"
           class:active={filterProblem === 'uncaptioned'}
           onclick={() => (filterProblem = filterProblem === 'uncaptioned' ? '' : 'uncaptioned')}
         >
-          <TriangleAlert /><span>没有标注</span><span class="num">{uncaptionedCount}</span>
+          <TriangleAlert /><span>{t().dataset.uncaptioned}</span><span class="num">{uncaptionedCount}</span>
         </button>
       {/if}
       {#if smallCount}
@@ -219,18 +224,18 @@
           class:active={filterProblem === 'small'}
           onclick={() => (filterProblem = filterProblem === 'small' ? '' : 'small')}
         >
-          <TriangleAlert /><span>短边不到 {SMALL_SIDE} 像素</span><span class="num">{smallCount}</span>
+          <TriangleAlert /><span>{t().dataset.small(SMALL_SIDE)}</span><span class="num">{smallCount}</span>
         </button>
       {/if}
     {/if}
 
     <div class="panel-head">
-      <span class="label-quiet">标签</span>
-      <span class="muted num">{tagCounts.length} 种</span>
+      <span class="label-quiet">{t().dataset.tags}</span>
+      <span class="muted num">{t().dataset.tagKinds(tagCounts.length)}</span>
     </div>
     <label class="input input-sm">
       <Search />
-      <input type="search" placeholder="找标签" bind:value={tagSearch} />
+      <input type="search" placeholder={t().dataset.findTag} bind:value={tagSearch} />
     </label>
     <div class="tag-list">
       {#each visibleTagCounts as [tag, count] (tag)}
@@ -245,7 +250,7 @@
           <span class="num">{count}</span>
         </button>
       {:else}
-        <p class="muted hint">{images.length ? '没有匹配的标签' : '放入图片后，这里会列出所有标签和出现的次数。'}</p>
+        <p class="muted hint">{images.length ? t().dataset.noMatchingTags : t().dataset.tagsEmpty}</p>
       {/each}
     </div>
   </section>
@@ -254,28 +259,28 @@
   <section class="grid-area">
     <div class="toolbar">
       <span class="count num">
-        {#if visible.length !== images.length}{visible.length} / {/if}{images.length} 张{#if selected.size}，<b>已选 {selected.size}</b>{/if}
+        {t().dataset.shown(visible.length, images.length)}{#if selected.size}{t().common.comma}<b>{t().dataset.selected(selected.size)}</b>{/if}
       </span>
       {#if filterTags.length || filterProblem}
-        <button class="btn btn-xs btn-soft" onclick={() => ((filterTags = []), (filterProblem = ''))}><X />取消筛选</button>
+        <button class="btn btn-xs btn-soft" onclick={() => ((filterTags = []), (filterProblem = ''))}><X />{t().dataset.clearFilter}</button>
       {/if}
-      <span class="notice-text" class:error={message && !message.startsWith('已')}>{busy || message}</span>
+      <span class="notice-text" class:error={!busy && failed}>{busy || message}</span>
       <span class="spacer"></span>
-      <input class="range range-xs size" type="range" min="96" max="320" step="8" bind:value={thumbSize} title="缩略图大小" />
+      <input class="range range-xs size" type="range" min="96" max="320" step="8" bind:value={thumbSize} title={t().dataset.thumbSize} />
       {#if selected.size}
-        <button class="btn btn-sm btn-ghost text-error" onclick={deleteSelected}><Trash2 />删除</button>
+        <button class="btn btn-sm btn-ghost text-error" onclick={deleteSelected}><Trash2 />{t().common.delete}</button>
       {/if}
-      <button class="btn btn-sm" disabled={!images.length} onclick={() => (showTagging = true)}><Sparkles />自动标注</button>
-      <button class="btn btn-sm btn-primary" onclick={() => (showImport = !showImport)}><ImagePlus />放入图片</button>
+      <button class="btn btn-sm" disabled={!images.length} onclick={() => (showTagging = true)}><Sparkles />{t().dataset.autoCaption}</button>
+      <button class="btn btn-sm btn-primary" onclick={() => (showImport = !showImport)}><ImagePlus />{t().dataset.addImages}</button>
     </div>
 
     {#if showImport}
       <div class="import-bar">
-        <button class="btn btn-sm" onclick={() => fileInput.click()}>选择文件…</button>
-        <span class="muted">或者填本机的文件夹：</span>
+        <button class="btn btn-sm" onclick={() => fileInput.click()}>{t().dataset.chooseFiles}</button>
+        <span class="muted">{t().dataset.orFolder}</span>
         <input type="text" class="input input-sm path" placeholder="D:\datasets\my-character" bind:value={folderPath} />
-        <button class="btn btn-sm" disabled={!folderPath.trim() || !!busy} onclick={importFromFolder}>导入文件夹</button>
-        <span class="muted note">同名的 .txt 会作为标注一起导入。</span>
+        <button class="btn btn-sm" disabled={!folderPath.trim() || !!busy} onclick={importFromFolder}>{t().dataset.importFolder}</button>
+        <span class="muted note">{t().dataset.sidecarNote}</span>
       </div>
     {/if}
     <input
@@ -300,20 +305,21 @@
         <button class="cell" class:selected={selected.has(image.id)} onclick={(e) => clickImage(e, image)}>
           <img src={thumbUrl(image.id)} alt={image.filename} loading="lazy" draggable="false" />
           {#if selected.has(image.id)}<span class="tick"><Check /></span>{/if}
-          {#if !image.caption}<span class="flag">没有标注</span>{/if}
+          {#if !image.caption}<span class="flag">{t().dataset.uncaptioned}</span>{/if}
         </button>
       {:else}
         <div class="empty">
           {#if images.length}
-            <p class="muted">没有符合筛选条件的图片。</p>
+            <p class="muted">{t().dataset.noFilterMatch}</p>
           {:else}
             <ImagePlus class="big-icon" />
-            <h2>把图片拖到这里</h2>
-            <p class="muted">同名的 .txt 会作为标注一起导入。也可以点右上角的"放入图片"。</p>
+            {@const [before, after] = around(t().dataset.guideLead(noun))}
+            <h2>{t().dataset.dropHere}</h2>
+            <p class="muted">{t().dataset.dropHelp}</p>
             <div class="guide">
-              <p class="guide-lead">学{guide.noun}，准备 <b class="num">{countRange(project.kind)}</b></p>
+              <p class="guide-lead">{before}<b class="num">{countRange(project.kind)}</b>{after}</p>
               <ul>
-                {#each [...guide.tips, ...COMMON_TIPS] as tip (tip)}<li>{tip}</li>{/each}
+                {#each tips as tip (tip)}<li>{tip}</li>{/each}
               </ul>
             </div>
           {/if}
@@ -325,7 +331,7 @@
   <!-- Right: the selection -->
   <section class="inspector">
     {#if single}
-      <a class="preview" href={fileUrl(single.id)} target="_blank" rel="noreferrer" title="查看原图">
+      <a class="preview" href={fileUrl(single.id)} target="_blank" rel="noreferrer" title={t().dataset.viewOriginal}>
         <img src={fileUrl(single.id)} alt={single.filename} />
       </a>
       <div class="meta">
@@ -334,7 +340,7 @@
       </div>
 
       <div class="panel-head">
-        <span class="label-quiet">标签</span>
+        <span class="label-quiet">{t().dataset.tags}</span>
         <span class="muted num">{splitTags(single.caption).length}</span>
       </div>
       <TagChips
@@ -343,55 +349,55 @@
         suggestions={tagCounts.map(([tag]) => tag)}
       />
     {:else if selectedImages.length > 1}
-      <h3>已选 {selectedImages.length} 张</h3>
+      <h3>{t().dataset.selectedTitle(selectedImages.length)}</h3>
 
-      <div class="panel-head"><span class="label-quiet">每张都有的标签</span></div>
+      <div class="panel-head"><span class="label-quiet">{t().dataset.sharedTags}</span></div>
       <TagChips tags={sharedTags.all} onremove={(tag) => editTags({ remove: [tag] })} readonlyOrder />
       {#if sharedTags.some.length}
-        <div class="panel-head"><span class="label-quiet">只有部分图片有</span></div>
+        <div class="panel-head"><span class="label-quiet">{t().dataset.someTags}</span></div>
         <TagChips tags={sharedTags.some} faded onremove={(tag) => editTags({ remove: [tag] })} readonlyOrder />
       {/if}
 
-      <div class="panel-head"><span class="label-quiet">给它们都加上</span></div>
+      <div class="panel-head"><span class="label-quiet">{t().dataset.addToAll}</span></div>
       <input
         type="text"
         class="input input-sm mono"
-        placeholder="标签，用逗号分隔"
+        placeholder={t().dataset.commaSeparated}
         bind:value={batchAdd}
         onkeydown={(e) => e.key === 'Enter' && submitBatchAdd('end')}
       />
       <div class="row">
-        <button class="btn btn-sm" disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('start')}>加到最前</button>
-        <button class="btn btn-sm" disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('end')}>加到最后</button>
+        <button class="btn btn-sm" disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('start')}>{t().dataset.addFirst}</button>
+        <button class="btn btn-sm" disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('end')}>{t().dataset.addLast}</button>
       </div>
 
-      <div class="panel-head"><span class="label-quiet">把一个标签换成另一个</span></div>
+      <div class="panel-head"><span class="label-quiet">{t().dataset.replaceTitle}</span></div>
       <div class="row">
-        <input type="text" class="input input-sm mono" placeholder="原标签" bind:value={replaceFrom} />
+        <input type="text" class="input input-sm mono" placeholder={t().dataset.replaceFrom} bind:value={replaceFrom} />
         <ArrowRight class="arrow" />
         <input
           type="text"
           class="input input-sm mono"
-          placeholder="新标签"
+          placeholder={t().dataset.replaceTo}
           bind:value={replaceTo}
           onkeydown={(e) => e.key === 'Enter' && submitReplace()}
         />
       </div>
       <div class="row">
-        <button class="btn btn-sm" disabled={!replaceFrom.trim() || !replaceTo.trim()} onclick={submitReplace}>替换</button>
+        <button class="btn btn-sm" disabled={!replaceFrom.trim() || !replaceTo.trim()} onclick={submitReplace}>{t().dataset.replace}</button>
       </div>
     {:else}
-      <h3>数据集</h3>
+      <h3>{t().dataset.title}</h3>
       <div class="facts">
-        <div><span class="figure num">{images.length}</span><span class="muted">张图片</span></div>
-        <div><span class="figure num">{tagCounts.length}</span><span class="muted">种标签</span></div>
+        <div><span class="figure num">{images.length}</span><span class="muted">{t().dataset.factImages}</span></div>
+        <div><span class="figure num">{tagCounts.length}</span><span class="muted">{t().dataset.factTags}</span></div>
         <div>
           <span class="figure num" class:warn={uncaptionedCount > 0}>{uncaptionedCount}</span>
-          <span class="muted">张没标注</span>
+          <span class="muted">{t().dataset.factUncaptioned}</span>
         </div>
       </div>
       {#if images.length}
-        <div class="panel-head"><span class="label-quiet">可以训练了吗</span></div>
+        <div class="panel-head"><span class="label-quiet">{t().dataset.readyTitle}</span></div>
         <ul class="checks">
           <li class:bad={!count.ok}>
             {#if count.ok}<Check />{:else}<TriangleAlert />{/if}
@@ -401,10 +407,10 @@
             {#if uncaptionedCount}<TriangleAlert />{:else}<Check />{/if}
             <span>
               {#if uncaptionedCount}
-                {uncaptionedCount} 张没有标注，训练时学不到它们该对应什么词。
-                <button class="link link-primary" onclick={() => (filterProblem = 'uncaptioned')}>看看是哪些</button>
+                {t().dataset.uncaptionedWarn(uncaptionedCount)}
+                <button class="link link-primary" onclick={() => (filterProblem = 'uncaptioned')}>{t().common.showWhich}</button>
               {:else}
-                每张图片都有标注。
+                {t().dataset.allCaptioned}
               {/if}
             </span>
           </li>
@@ -413,10 +419,12 @@
               {#if missingTrigger}<TriangleAlert />{:else}<Check />{/if}
               <span>
                 {#if missingTrigger}
-                  {missingTrigger} 张的标注里没有触发词 <code>{project.trigger}</code>。
-                  <button class="link link-primary" onclick={addTriggerToAll}>加到所有图片最前面</button>
+                  {@const [before, after] = around(t().dataset.missingTrigger(missingTrigger))}
+                  {before}<code>{project.trigger}</code>{after}
+                  <button class="link link-primary" onclick={addTriggerToAll}>{t().common.addTriggerToAll}</button>
                 {:else}
-                  每张图片的标注里都有触发词 <code>{project.trigger}</code>。
+                  {@const [before, after] = around(t().dataset.allHaveTrigger)}
+                  {before}<code>{project.trigger}</code>{after}
                 {/if}
               </span>
             </li>
@@ -425,8 +433,8 @@
             <li class="bad">
               <TriangleAlert />
               <span>
-                {smallCount} 张短边不到 {SMALL_SIDE} 像素，训练时会被放大，细节发糊。能换成大图就换。
-                <button class="link link-primary" onclick={() => (filterProblem = 'small')}>看看是哪些</button>
+                {t().dataset.smallWarn(smallCount, SMALL_SIDE)}
+                <button class="link link-primary" onclick={() => (filterProblem = 'small')}>{t().common.showWhich}</button>
               </span>
             </li>
           {/if}
@@ -434,14 +442,14 @@
             <li class="bad">
               <TriangleAlert />
               <span>
-                几乎每张图都有这些标签：
+                {t().dataset.constantLead}
                 <span class="constant">
                   {#each constant.slice(0, 8) as tag (tag)}
                     <button class="mini-tag" class:active={filterTags.includes(tag)} onclick={() => toggleFilterTag(tag)}>{tag}</button>
                   {/each}
-                  {#if constant.length > 8}<span class="muted">等 {constant.length} 个</span>{/if}
+                  {#if constant.length > 8}<span class="muted">{t().dataset.andMore(constant.length)}</span>{/if}
                 </span>
-                {CONSTANT_ADVICE[project.kind]}
+                {constantAdvice(project.kind)}
               </span>
             </li>
           {/if}
@@ -449,24 +457,24 @@
 
         <!-- With no images yet, the empty state in the centre says the same. -->
         <details class="tips" open={!count.ok}>
-          <summary>什么样的图片合适</summary>
-          <p>学{guide.noun}，一般准备 {countRange(project.kind)}。</p>
+          <summary>{t().dataset.whatImages}</summary>
+          <p>{t().dataset.usually(noun, countRange(project.kind))}</p>
           <ul>
-            {#each [...guide.tips, ...COMMON_TIPS] as tip (tip)}<li>{tip}</li>{/each}
+            {#each tips as tip (tip)}<li>{tip}</li>{/each}
           </ul>
         </details>
       {/if}
 
-      <p class="muted hint">点一张图片，在这里改它的标签。选中多张可以一起改。</p>
+      <p class="muted hint">{t().dataset.hint}</p>
       <dl class="keys">
-        <dt><kbd class="kbd kbd-sm">Ctrl</kbd> + 点击</dt>
-        <dd>多选</dd>
-        <dt><kbd class="kbd kbd-sm">Shift</kbd> + 点击</dt>
-        <dd>连选</dd>
+        <dt><kbd class="kbd kbd-sm">Ctrl</kbd> + {t().dataset.click}</dt>
+        <dd>{t().dataset.multiSelect}</dd>
+        <dt><kbd class="kbd kbd-sm">Shift</kbd> + {t().dataset.click}</dt>
+        <dd>{t().dataset.rangeSelect}</dd>
         <dt><kbd class="kbd kbd-sm">Ctrl</kbd> + <kbd class="kbd kbd-sm">A</kbd></dt>
-        <dd>全选</dd>
+        <dd>{t().dataset.selectAll}</dd>
         <dt><kbd class="kbd kbd-sm">Delete</kbd></dt>
-        <dd>删除选中的</dd>
+        <dd>{t().dataset.deleteSelected}</dd>
       </dl>
     {/if}
   </section>

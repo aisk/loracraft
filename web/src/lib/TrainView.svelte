@@ -3,6 +3,7 @@
   import { api, runApi, type DatasetImage, type Project, type Run } from './api'
   import TrainMonitor from './TrainMonitor.svelte'
   import TrainSetup from './TrainSetup.svelte'
+  import { t } from './i18n/index.svelte'
 
   let {
     project,
@@ -34,22 +35,22 @@
 </script>
 
 {#if runs === null || images === null}
-  <div class="reading muted">正在读取…</div>
+  <div class="reading muted">{t().common.loading}</div>
 {:else if active}
   <TrainMonitor run={active} />
 {:else}
   {#if last && last.id !== dismissed && last.status !== 'queued'}
     <div class="banner" class:failed={last.status === 'failed'}>
       {#if last.status === 'done'}
-        <span>训练 {last.name} 已完成，保存了 {last.checkpoints.length} 个轮次。</span>
-        <button class="btn btn-sm btn-primary" onclick={() => ongotoresults(last.id)}>挑选最好的一轮</button>
+        <span>{t().train.finished(last.name, last.checkpoints.length)}</span>
+        <button class="btn btn-sm btn-primary" onclick={() => ongotoresults(last.id)}>{t().train.pickBest}</button>
       {:else if last.status === 'stopped'}
-        <span>训练 {last.name} 已停止，保留了 {last.checkpoints.length} 个轮次。</span>
-        {#if last.checkpoints.length}<button class="btn btn-sm" onclick={() => ongotoresults(last.id)}>查看结果</button>{/if}
+        <span>{t().train.stopped(last.name, last.checkpoints.length)}</span>
+        {#if last.checkpoints.length}<button class="btn btn-sm" onclick={() => ongotoresults(last.id)}>{t().train.viewResults}</button>{/if}
       {:else}
-        <span>训练 {last.name} 出错中断：{last.progress.error ?? '训练进程意外退出，详见该次训练目录下的 trainer.log。'}</span>
+        <span>{t().train.failed(last.name, last.progress.error ?? t().train.crashed)}</span>
       {/if}
-      <button class="btn btn-sm btn-ghost btn-square" title="关闭" onclick={() => (dismissed = last.id)}><X /></button>
+      <button class="btn btn-sm btn-ghost btn-square" title={t().common.close} onclick={() => (dismissed = last.id)}><X /></button>
     </div>
   {/if}
     <TrainSetup

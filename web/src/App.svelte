@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Check, ChevronRight, Moon, Plus, Settings, SlidersHorizontal, Sun } from '@lucide/svelte'
+  import { Check, ChevronRight, Languages, Moon, Plus, Settings, SlidersHorizontal, Sun } from '@lucide/svelte'
   import { api, runApi, thumbUrl, type Project, type Run } from './lib/api'
   import DatasetView from './lib/DatasetView.svelte'
   import { GUIDES, countRange } from './lib/guidance'
+  import { LOCALES, getLocale, setLocale, t, type Locale } from './lib/i18n/index.svelte'
   import NewProjectDialog from './lib/NewProjectDialog.svelte'
   import ResultsView from './lib/ResultsView.svelte'
   import SettingsDialog from './lib/SettingsDialog.svelte'
@@ -10,7 +11,6 @@
 
   type TabId = 'dataset' | 'train' | 'results'
   const TAB_IDS: TabId[] = ['dataset', 'train', 'results']
-  const KIND_LABEL = { character: '角色', style: '画风', concept: '概念' }
 
   let projects = $state<Project[]>([])
   let runs = $state<Run[]>([]) // of the open project, newest first
@@ -88,38 +88,39 @@
     const uncaptioned = current.uncaptioned_count ?? 0
     const finished = runs.filter((r) => r.checkpoints.length > 0)
 
-    let train = '还没有训练过'
+    const m = t().app
+    let train = m.neverTrained
     if (activeRun) {
       const p = activeRun.progress
       train =
         activeRun.status === 'queued'
-          ? '排队中'
+          ? m.queued
           : p.total_steps && p.step
-            ? `训练中，${Math.round((p.step / p.total_steps) * 100)}%`
-            : '正在准备'
+            ? m.trainingPercent(Math.round((p.step / p.total_steps) * 100))
+            : m.preparing
     } else if (runs[0]) {
-      train = { done: '上次训练已完成', stopped: '上次训练已停止', failed: '上次训练出错', queued: '', running: '' }[runs[0].status]
+      train = { done: m.lastDone, stopped: m.lastStopped, failed: m.lastFailed, queued: '', running: '' }[runs[0].status]
     }
 
     return [
       {
         id: 'dataset' as TabId,
-        label: '数据集',
+        label: m.stages.dataset,
         status: count
-          ? `${count} 张图片` + (uncaptioned ? `，${uncaptioned} 张没有标注` : count < GUIDES[current.kind].min ? '，偏少' : '')
-          : `先放入 ${countRange(current.kind)}图片`,
+          ? m.datasetCount(count, uncaptioned, count < GUIDES[current.kind].min)
+          : m.datasetEmpty(countRange(current.kind)),
         done: count >= GUIDES[current.kind].min && uncaptioned === 0,
         live: false,
       },
-      { id: 'train' as TabId, label: '训练', status: train, done: finished.length > 0 && !activeRun, live: !!activeRun },
+      { id: 'train' as TabId, label: m.stages.train, status: train, done: finished.length > 0 && !activeRun, live: !!activeRun },
       {
         id: 'results' as TabId,
-        label: '结果',
+        label: m.stages.results,
         status: !finished.length
-          ? '训练后在这里挑选'
+          ? m.resultsNone
           : runs.some((r) => r.best_checkpoint)
-            ? `${finished.length} 次训练，已选出最佳`
-            : `${finished.length} 次训练，等你挑选`,
+            ? m.resultsPicked(finished.length)
+            : m.resultsWaiting(finished.length),
         done: runs.some((r) => r.best_checkpoint),
         live: false,
       },
@@ -135,8 +136,8 @@
     </div>
 
     <div class="section-head">
-      <span class="label-quiet">项目</span>
-      <button class="btn btn-ghost btn-xs btn-square" title="新建项目" onclick={() => (showNewProject = true)}>
+      <span class="label-quiet">{t().app.projects}</span>
+      <button class="btn btn-ghost btn-xs btn-square" title={t().app.newProject} onclick={() => (showNewProject = true)}>
         <Plus />
       </button>
     </div>
@@ -150,20 +151,31 @@
           {/if}
           <span class="text">
             <span class="name">{project.name}</span>
-            <span class="meta num">{KIND_LABEL[project.kind]}，{project.image_count ?? 0} 张</span>
+            <span class="meta num">{t().app.projectMeta(t().common.kinds[project.kind], project.image_count ?? 0)}</span>
           </span>
-          {#if project.active_runs}<span class="live-dot" title="正在训练"></span>{/if}
+          {#if project.active_runs}<span class="live-dot" title={t().app.training}></span>{/if}
         </button>
       {:else}
-        <p class="empty muted">还没有项目</p>
+        <p class="empty muted">{t().app.noProjects}</p>
       {/each}
     </div>
 
     <div class="foot">
-      <button class="btn btn-ghost btn-sm" onclick={() => (showSettings = true)}><Settings />设置</button>
+      <button class="btn btn-ghost btn-sm" onclick={() => (showSettings = true)}><Settings />{t().app.settings}</button>
+      <span class="spacer"></span>
+      <label class="language" title={t().common.language}>
+        <Languages />
+        <select
+          aria-label={t().common.language}
+          value={getLocale()}
+          onchange={(e) => setLocale(e.currentTarget.value as Locale)}
+        >
+          {#each LOCALES as locale (locale.id)}<option value={locale.id}>{locale.name}</option>{/each}
+        </select>
+      </label>
       <button
         class="btn btn-ghost btn-sm btn-square"
-        title={theme === 'darkroom' ? '换成浅色界面' : '换成深色界面'}
+        title={theme === 'darkroom' ? t().app.toLight : t().app.toDark}
         onclick={() => (theme = theme === 'darkroom' ? 'daylight' : 'darkroom')}
       >
         {#if theme === 'darkroom'}<Sun />{:else}<Moon />{/if}
@@ -174,22 +186,22 @@
   <main>
     {#if loadError}
       <div class="center">
-        <p>连不上 LoraCraft 的后台服务：{loadError}</p>
-        <button class="btn" onclick={refreshProjects}>重试</button>
+        <p>{t().app.backendDown(loadError)}</p>
+        <button class="btn" onclick={refreshProjects}>{t().app.retry}</button>
       </div>
     {:else if current}
       <header>
         <div class="title">
           <h1>{current.name}</h1>
-          <span class="badge badge-soft badge-sm">{KIND_LABEL[current.kind]}</span>
-          {#if current.trigger}<code class="trigger" title="触发词">{current.trigger}</code>{/if}
+          <span class="badge badge-soft badge-sm">{t().common.kinds[current.kind]}</span>
+          {#if current.trigger}<code class="trigger" title={t().app.trigger}>{current.trigger}</code>{/if}
           <button class="btn btn-ghost btn-xs" onclick={() => (showEditProject = true)}>
-            <SlidersHorizontal />项目设置
+            <SlidersHorizontal />{t().app.projectSettings}
           </button>
         </div>
 
         <!-- The three stages of making a LoRA, each saying where this project stands. -->
-        <nav aria-label="流程">
+        <nav aria-label={t().app.workflow}>
           {#each steps as step, index (step.id)}
             {#if index}<ChevronRight class="arrow" aria-hidden="true" />{/if}
             <button class="stage" class:active={tab === step.id} aria-current={tab === step.id} onclick={() => (tab = step.id)}>
@@ -225,9 +237,9 @@
     {:else}
       <div class="center welcome">
         <span class="mark big" aria-hidden="true"></span>
-        <h1>从一组图片，做出你自己的 LoRA</h1>
-        <p class="muted">每个项目对应一个 LoRA：放入图片、写好标注、训练，再从每一轮的预览图里挑出最好的。</p>
-        <button class="btn btn-primary btn-lg" onclick={() => (showNewProject = true)}><Plus />新建项目</button>
+        <h1>{t().app.welcomeTitle}</h1>
+        <p class="muted">{t().app.welcomeBody}</p>
+        <button class="btn btn-primary btn-lg" onclick={() => (showNewProject = true)}><Plus />{t().app.newProject}</button>
       </div>
     {/if}
   </main>
@@ -390,8 +402,50 @@
   }
   .foot {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-1);
     padding-top: var(--space-2);
+  }
+  .spacer {
+    flex: 1;
+  }
+  /* A quiet select that reads like the ghost buttons beside it. */
+  .language {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 2rem;
+    padding: 0 6px;
+    border-radius: var(--radius);
+    color: var(--text-2);
+    font-size: var(--text-sm);
+  }
+  .language:hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+  .language :global(svg) {
+    width: 15px;
+    height: 15px;
+    flex: none;
+  }
+  .language select {
+    appearance: none;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    outline: none;
+  }
+  .language:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .language option {
+    background: var(--surface);
+    color: var(--text);
   }
 
   main {

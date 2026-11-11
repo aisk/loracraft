@@ -383,7 +383,7 @@ def delete_run(run_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     """Remove a finished run together with its checkpoints and preview images."""
     row = _run(conn, run_id)
     if row["status"] in ("queued", "running"):
-        raise HTTPException(409, "这次训练还在进行或排队，先停止它")
+        raise HTTPException(409, "This training is still running or queued; stop it first")
     directory = run_dir(row)
     conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
     conn.commit()  # row first: leftover files are harmless, a row without its files is not

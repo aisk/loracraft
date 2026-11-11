@@ -1,5 +1,6 @@
 <script lang="ts">
   import { X } from '@lucide/svelte'
+  import { t } from './i18n/index.svelte'
   // A list of tag chips. With `onchange` it is a full editor (add, remove); with only
   // `onremove` it shows removable chips, used for the batch view of a multi-selection.
   let {
@@ -49,14 +50,14 @@
   {#each tags as tag (tag)}
     <span class="chip">
       {tag}
-      <button class="x" title="移除" onclick={() => remove(tag)}><X /></button>
+      <button class="x" title={t().tags.remove} onclick={() => remove(tag)}><X /></button>
     </span>
   {:else}
-    {#if readonlyOrder}<span class="none">无</span>{/if}
+    {#if readonlyOrder}<span class="none">{t().tags.none}</span>{/if}
   {/each}
 
   {#if onchange}
-    <input class="add" type="text" placeholder="添加标签，回车确认" list={listId} bind:value={draft} onkeydown={onKeydown} onblur={add} />
+    <input class="add" type="text" placeholder={t().tags.addPlaceholder} list={listId} bind:value={draft} onkeydown={onKeydown} onblur={add} />
     <datalist id={listId}>
       {#each suggestions.filter((s) => !tags.includes(s)).slice(0, 200) as suggestion (suggestion)}
         <option value={suggestion}></option>

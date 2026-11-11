@@ -11,6 +11,7 @@
     type TaggingState,
     type TagSuggestion,
   } from './api'
+  import { around, t } from './i18n/index.svelte'
 
   let {
     project,
@@ -26,13 +27,11 @@
     onaccepted: (updated: DatasetImage[]) => void
   } = $props()
 
-  const GOALS = [
-    { id: 'character', name: '一个角色', hint: '角色固有的外貌不写进标注，让它们绑定到触发词上；服装、姿势、表情、背景等会变化的内容都标出来。' },
-    { id: 'style', name: '一种画风', hint: '画风、笔触、媒介都不写，让它们绑定到触发词上；画面里的内容尽量标全。' },
-    { id: 'concept', name: '一个概念', hint: '要学的概念本身（比如一件衣服、一个姿势）不写，其余都标出来。' },
-    { id: 'general', name: '不特别针对', hint: '看到什么标什么。' },
-  ] as const
-  const ISSUE_REASON = { banned: '在禁用列表里', fixed_trait: '角色固有特征', not_in_vocabulary: '不在指定标签里' }
+  const GOALS = ['character', 'style', 'concept', 'general'] as const
+  const FORMATS = ['danbooru', 'natural', 'mixed'] as const
+  // Issues for which a tag was left out of the suggestion, rather than kept and flagged.
+  const SKIPPED = ['banned', 'fixed_trait', 'not_in_vocabulary'] as const
+  type Skipped = (typeof SKIPPED)[number]
 
   let tagging = $state<TaggingState | null>(null)
   let profile = $state<TaggingProfile | null>(null)
@@ -56,10 +55,11 @@
 
   // What "start" will work on: the selection if there is one, else whatever lacks a caption, else everything.
   const target = $derived.by(() => {
-    if (selectedIds.length) return { ids: selectedIds, label: `选中的 ${selectedIds.length} 张` }
+    const m = t().tagging
+    if (selectedIds.length) return { ids: selectedIds, label: m.targetSelected(selectedIds.length) }
     const uncaptioned = images.filter((i) => !i.caption).map((i) => i.id)
-    if (uncaptioned.length) return { ids: uncaptioned, label: `还没有标注的 ${uncaptioned.length} 张` }
-    return { ids: images.map((i) => i.id), label: `全部 ${images.length} 张` }
+    if (uncaptioned.length) return { ids: uncaptioned, label: m.targetUncaptioned(uncaptioned.length) }
+    return { ids: images.map((i) => i.id), label: m.targetAll(images.length) }
   })
 
   async function refresh() {
@@ -150,94 +150,90 @@
     return {
       tags: proposed.map((tag) => ({ tag, isNew: !current.includes(tag), issue: flagged.get(tag) })),
       dropped: current.filter((tag) => !proposed.includes(tag)),
-      skipped: s.issues.filter((i) => i.kind in ISSUE_REASON),
+      skipped: s.issues.filter((i) => (SKIPPED as readonly string[]).includes(i.kind)),
     }
   }
 </script>
 
 <div class="panel">
   <header>
-    <h2>自动标注</h2>
-    <span class="muted">让视觉模型看图写标注。结果先作为建议列出，你确认后才会写入。</span>
+    <h2>{t().tagging.title}</h2>
+    <span class="muted">{t().tagging.subtitle}</span>
     <span class="spacer"></span>
-    <button class="btn btn-sm" onclick={onclose}><X />关闭</button>
+    <button class="btn btn-sm" onclick={onclose}><X />{t().common.close}</button>
   </header>
 
   {#if !profile || !tagging}
-    <p class="pad muted">{error || '正在读取…'}</p>
+    <p class="pad muted">{error || t().common.loading}</p>
   {:else}
     <div class="columns">
       <div class="form">
         <section>
-          <h3>用哪个模型看图</h3>
+          <h3>{t().tagging.modelTitle}</h3>
           {#if editingModel}
-            <p class="help">任何兼容 OpenAI 接口的视觉模型都可以：云端服务，或本机的 Ollama、LM Studio。素材不适合发到云端时，用本机模型。</p>
-            <label><span>服务地址</span><input type="text" class="input input-sm mono" placeholder="http://localhost:11434/v1" bind:value={baseUrl} /></label>
-            <label><span>模型名</span><input type="text" class="input input-sm mono" placeholder="qwen2.5vl:7b" bind:value={model} /></label>
-            <label><span>API Key</span><input type="text" class="input input-sm mono" placeholder="本机模型可留空" bind:value={apiKey} /></label>
+            <p class="help">{t().tagging.modelHelp}</p>
+            <label><span>{t().settings.baseUrl}</span><input type="text" class="input input-sm mono" placeholder="http://localhost:11434/v1" bind:value={baseUrl} /></label>
+            <label><span>{t().settings.model}</span><input type="text" class="input input-sm mono" placeholder="qwen2.5vl:7b" bind:value={model} /></label>
+            <label><span>{t().settings.apiKey}</span><input type="text" class="input input-sm mono" placeholder={t().settings.apiKeyPlaceholder} bind:value={apiKey} /></label>
             <div class="row">
-              <button class="btn btn-sm btn-primary" disabled={!baseUrl.trim() || !model.trim()} onclick={saveModel}>保存</button>
-              {#if tagging.configured}<button class="btn btn-sm" onclick={() => (editingModel = false)}>取消</button>{/if}
+              <button class="btn btn-sm btn-primary" disabled={!baseUrl.trim() || !model.trim()} onclick={saveModel}>{t().common.save}</button>
+              {#if tagging.configured}<button class="btn btn-sm" onclick={() => (editingModel = false)}>{t().common.cancel}</button>{/if}
             </div>
           {:else}
             <div class="row">
               <code>{model}</code>
-              <button class="link link-primary" onclick={() => (editingModel = true)}>更改</button>
+              <button class="link link-primary" onclick={() => (editingModel = true)}>{t().common.change}</button>
             </div>
           {/if}
         </section>
 
         <section>
-          <h3>这个 LoRA 要学什么</h3>
+          <h3>{t().tagging.goalTitle}</h3>
           <div class="goals">
-            {#each GOALS as g (g.id)}
-              <button class={['btn btn-sm', profile.goal === g.id && 'btn-primary btn-soft']} onclick={() => (profile!.goal = g.id)}>{g.name}</button>
+            {#each GOALS as g (g)}
+              <button class={['btn btn-sm', profile.goal === g && 'btn-primary btn-soft']} onclick={() => (profile!.goal = g)}>{t().tagging.goals[g].name}</button>
             {/each}
           </div>
-          <p class="help">{GOALS.find((g) => g.id === profile!.goal)?.hint}</p>
+          <p class="help">{t().tagging.goals[profile.goal].hint}</p>
           {#if profile.goal === 'character'}
             <label class="stacked">
-              <span>这个角色固有的特征</span>
+              <span>{t().tagging.fixedTraits}</span>
               <input type="text" class="input input-sm mono" placeholder="silver hair, red eyes, cat ears" bind:value={fixedTraits} />
             </label>
           {:else if profile.goal === 'concept'}
             <label class="stacked">
-              <span>要学的概念是什么</span>
-              <input class="input input-sm" type="text" placeholder="例如：一件特定的红色旗袍" bind:value={profile.concept} />
+              <span>{t().tagging.concept}</span>
+              <input class="input input-sm" type="text" placeholder={t().tagging.conceptPlaceholder} bind:value={profile.concept} />
             </label>
           {/if}
         </section>
 
         <section>
-          <h3>标注怎么写</h3>
+          <h3>{t().tagging.formatTitle}</h3>
           <select class="select select-sm" bind:value={profile.format}>
-            <option value="danbooru">Danbooru 标签（二次元底模用这个）</option>
-            <option value="natural">自然语言描述</option>
-            <option value="mixed">标签加一句描述</option>
+            {#each FORMATS as f (f)}<option value={f}>{t().tagging.formats[f]}</option>{/each}
           </select>
           {#if profile.format !== 'natural'}
             <label class="stacked">
-              <span>优先使用这些标签</span>
-              <textarea class="textarea" rows="2" placeholder="用逗号分隔" bind:value={preferred}></textarea>
+              <span>{t().tagging.preferred}</span>
+              <textarea class="textarea" rows="2" placeholder={t().tagging.commaSeparated} bind:value={preferred}></textarea>
             </label>
-            <label class="check"><input class="checkbox checkbox-sm" type="checkbox" bind:checked={profile.preferred_only} /><span>只允许使用上面这些标签</span></label>
+            <label class="check"><input class="checkbox checkbox-sm" type="checkbox" bind:checked={profile.preferred_only} /><span>{t().tagging.preferredOnly}</span></label>
             <label class="stacked">
-              <span>不要出现的标签</span>
-              <input type="text" class="input input-sm mono" placeholder="用逗号分隔" bind:value={banned} />
+              <span>{t().tagging.banned}</span>
+              <input type="text" class="input input-sm mono" placeholder={t().tagging.commaSeparated} bind:value={banned} />
             </label>
             {#if profile.format === 'danbooru' && tagging.dictionary_size === 0}
-              <p class="help">
-                没有安装标签词典，所以无法检查模型写的标签是否真实存在。把 danbooru.csv 放进数据目录下的
-                <code>dictionaries</code> 文件夹后会自动启用校验。
-              </p>
+              {@const [before, after] = around(t().tagging.noDictionary)}
+              <p class="help">{before}<code>dictionaries</code>{after}</p>
             {/if}
           {/if}
           <label class="stacked">
-            <span>其他要求</span>
-            <textarea class="textarea" rows="2" placeholder="例如：服装细节写详细一些" bind:value={profile.extra_instructions}></textarea>
+            <span>{t().tagging.extra}</span>
+            <textarea class="textarea" rows="2" placeholder={t().tagging.extraPlaceholder} bind:value={profile.extra_instructions}></textarea>
           </label>
           <details>
-            <summary>查看发给模型的完整指令</summary>
+            <summary>{t().tagging.showPrompt}</summary>
             <pre>{prompt}</pre>
           </details>
         </section>
@@ -246,17 +242,17 @@
           {#if error}<p class="error">{error}</p>{/if}
           {#if tagging.job?.running}
             <div class="row">
-              <span class="num">正在标注 {tagging.job.done} / {tagging.job.total}</span>
-              <button class="btn btn-sm" onclick={() => taggingApi.cancel(project.id)}>停止</button>
+              <span class="num">{t().tagging.progress(tagging.job.done, tagging.job.total)}</span>
+              <button class="btn btn-sm" onclick={() => taggingApi.cancel(project.id)}>{t().common.stop}</button>
             </div>
           {:else}
-            <p class="help">对象：{target.label}。建议先试几张，看结果满意再全部标注。</p>
+            <p class="help">{t().tagging.targetHelp(target.label)}</p>
             <div class="row">
               <button class="btn btn-sm" disabled={!tagging.configured || !target.ids.length} onclick={() => start(target.ids.slice(0, 3))}>
-                先试 {Math.min(3, target.ids.length)} 张
+                {t().tagging.tryFirst(Math.min(3, target.ids.length))}
               </button>
               <button class="btn btn-sm btn-primary" disabled={!tagging.configured || !target.ids.length} onclick={() => start(target.ids)}>
-                标注{target.label}
+                {t().tagging.runAll(target.label)}
               </button>
             </div>
           {/if}
@@ -266,18 +262,18 @@
       <div class="review">
         {#if tagging.job?.errors.length}
           <div class="errors">
-            <strong>{tagging.job.errors.length} 张没有成功</strong>
+            <strong>{t().tagging.failed(tagging.job.errors.length)}</strong>
             <span>{tagging.job.errors[0].message}</span>
           </div>
         {/if}
 
         {#if tagging.suggestions.length}
           <div class="review-head">
-            <span>{tagging.suggestions.length} 条建议待确认</span>
-            <span class="legend"><span class="tag new">新增</span><span class="tag">已有</span><span class="tag warn">词典里没有</span></span>
+            <span>{t().tagging.pending(tagging.suggestions.length)}</span>
+            <span class="legend"><span class="tag new">{t().tagging.legendNew}</span><span class="tag">{t().tagging.legendKept}</span><span class="tag warn">{t().tagging.legendUnknown}</span></span>
             <span class="spacer"></span>
-            <button class="btn btn-sm" onclick={() => discard(tagging!.suggestions)}>全部丢弃</button>
-            <button class="btn btn-sm btn-primary" onclick={() => accept(tagging!.suggestions)}>全部采用</button>
+            <button class="btn btn-sm" onclick={() => discard(tagging!.suggestions)}>{t().tagging.discardAll}</button>
+            <button class="btn btn-sm btn-primary" onclick={() => accept(tagging!.suggestions)}>{t().tagging.acceptAll}</button>
           </div>
           <div class="suggestions">
             {#each tagging.suggestions as s (s.image_id)}
@@ -286,43 +282,43 @@
                 <img src={thumbUrl(s.image_id)} alt="" />
                 <div class="body">
                   <div class="tags">
-                    {#each d.tags as t, index (`${index} ${t.tag}`)}
+                    {#each d.tags as item, index (`${index} ${item.tag}`)}
                       <button
                         class="tag"
-                        class:new={t.isNew}
-                        class:warn={t.issue?.kind === 'unknown'}
-                        class:struck={removed[s.image_id]?.includes(t.tag)}
-                        title={t.issue?.kind === 'corrected'
-                          ? `模型写的是"${t.issue.original}"，已按词典改正`
-                          : t.issue
-                            ? '标签词典里没有这个词，点击去掉'
-                            : '点击去掉这个标签'}
-                        onclick={() => strike(s.image_id, t.tag)}>{t.tag}</button
+                        class:new={item.isNew}
+                        class:warn={item.issue?.kind === 'unknown'}
+                        class:struck={removed[s.image_id]?.includes(item.tag)}
+                        title={item.issue?.kind === 'corrected'
+                          ? t().tagging.corrected(item.issue.original ?? '')
+                          : item.issue
+                            ? t().tagging.unknownTitle
+                            : t().tagging.strikeTitle}
+                        onclick={() => strike(s.image_id, item.tag)}>{item.tag}</button
                       >
                     {/each}
                   </div>
                   {#if d.dropped.length}
-                    <p class="note">会去掉现有的：<span class="mono">{d.dropped.join(', ')}</span></p>
+                    <p class="note">{t().tagging.willDrop}<span class="mono">{d.dropped.join(', ')}</span></p>
                   {/if}
                   {#if d.skipped.length}
                     <p class="note">
-                      已略过：{#each d.skipped as issue, i (`${i} ${issue.tag}`)}{i ? '，' : ''}<span class="mono">{issue.tag}</span>（{ISSUE_REASON[
-                          issue.kind as keyof typeof ISSUE_REASON
-                        ]}）{/each}
+                      {t().tagging.skipped}{#each d.skipped as issue, i (`${i} ${issue.tag}`)}{i ? t().common.comma : ''}<span class="mono"
+                          >{issue.tag}</span
+                        >{t().tagging.reason(t().tagging.issueReason[issue.kind as Skipped])}{/each}
                     </p>
                   {/if}
                 </div>
                 <div class="decide">
-                  <button class="btn btn-sm btn-primary" onclick={() => accept([s])}>采用</button>
-                  <button class="btn btn-sm" onclick={() => discard([s])}>丢弃</button>
+                  <button class="btn btn-sm btn-primary" onclick={() => accept([s])}>{t().tagging.accept}</button>
+                  <button class="btn btn-sm" onclick={() => discard([s])}>{t().tagging.discard}</button>
                 </div>
               </article>
             {/each}
           </div>
         {:else if tagging.job?.running}
-          <p class="pad muted">标注结果会陆续出现在这里。</p>
+          <p class="pad muted">{t().tagging.arriving}</p>
         {:else}
-          <p class="pad muted">还没有待确认的建议。在左边说明要求，然后开始标注。</p>
+          <p class="pad muted">{t().tagging.empty}</p>
         {/if}
       </div>
     </div>
@@ -398,7 +394,7 @@
   }
   label {
     display: grid;
-    grid-template-columns: 72px 1fr;
+    grid-template-columns: 96px 1fr;
     align-items: center;
     gap: var(--space-2);
   }

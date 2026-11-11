@@ -1,14 +1,13 @@
 <script lang="ts">
   import { Download, GalleryHorizontalEnd, Star, Trash2 } from '@lucide/svelte'
-  import { checkpointEpoch, parseSampleName, runApi, sampleUrl, type Project, type Run } from './api'
+  import { checkpointEpoch, errorText, parseSampleName, runApi, sampleUrl, type Project, type Run } from './api'
+  import { t } from './i18n/index.svelte'
 
   let {
     project,
     focusRunId,
     ongototrain,
   }: { project: Project; focusRunId: number | null; ongototrain: () => void } = $props()
-
-  const STATUS = { queued: '排队中', running: '训练中', done: '', stopped: '中途停止', failed: '出错中断' }
 
   let runs = $state<Run[] | null>(null)
   // svelte-ignore state_referenced_locally -- only the initial focus matters
@@ -61,21 +60,7 @@
     if (!run || !runs) return []
     const previous = runs.find((r) => r.id < run.id)
     if (!previous) return []
-    const labels: Record<string, string> = {
-      base_model: '底模',
-      epochs: '轮数',
-      network_dim: 'rank',
-      network_alpha: 'alpha',
-      unet_lr: '学习率',
-      optimizer: '优化器',
-      lr_scheduler: '学习率变化',
-      batch_size: '每步图片数',
-      repeats: '重复次数',
-      resolution: '分辨率',
-      min_snr_gamma: 'Min-SNR',
-      noise_offset: 'noise offset',
-      train_text_encoder: '训练文本编码器',
-    }
+    const labels: Record<string, string> = t().results.fields
     const short = (v: unknown) => (typeof v === 'string' ? (v.split(/[\\/]/).pop() ?? v).replace('.safetensors', '') : String(v))
     const out: string[] = []
     for (const [key, label] of Object.entries(labels)) {
@@ -83,7 +68,7 @@
       const b = (run.config as unknown as Record<string, unknown>)[key]
       if (a !== b) out.push(`${label} ${short(a)} → ${short(b)}`)
     }
-    if (previous.num_images !== run.num_images) out.push(`图片 ${previous.num_images} → ${run.num_images} 张`)
+    if (previous.num_images !== run.num_images) out.push(t().results.imagesChange(previous.num_images, run.num_images))
     return out
   })
 
@@ -95,7 +80,7 @@
     message = ''
     try {
       const { path } = await runApi.exportCheckpoint(run!.id, checkpoint)
-      message = `已复制到 ${path}`
+      message = t().results.exported(path)
       needExportDir = false
     } catch (error) {
       const settings = await runApi.getSettings()
@@ -134,14 +119,14 @@
 
   async function remove() {
     const target = run!
-    if (!confirm(`删除训练 ${target.name}？它保存的 ${target.checkpoints.length} 个轮次和预览图都会被删除，无法恢复。已经导出的文件不受影响。`)) return
+    if (!confirm(t().results.confirmDelete(target.name, target.checkpoints.length))) return
     message = ''
     try {
       await runApi.remove(target.id)
       runs = runs!.filter((r) => r.id !== target.id)
       selectedId = null
     } catch (error) {
-      message = String(error)
+      message = errorText(error, t().common.runBusy)
     }
   }
 </script>
@@ -149,27 +134,27 @@
 <svelte:window onkeydown={(e) => e.key === 'Escape' && (zoomed = null)} />
 
 {#if runs === null}
-  <div class="empty muted">正在读取…</div>
+  <div class="empty muted">{t().common.loading}</div>
 {:else if !run}
   <div class="empty">
     <GalleryHorizontalEnd class="big-icon" />
-    <h2>还没有可以挑的结果</h2>
-    <p class="muted">训练完成后，每一轮的预览图会在这里并排列出，方便你挑出最好的一轮。</p>
-    <button class="btn btn-primary" onclick={ongototrain}>去训练</button>
+    <h2>{t().results.emptyTitle}</h2>
+    <p class="muted">{t().results.emptyBody}</p>
+    <button class="btn btn-primary" onclick={ongototrain}>{t().results.gotoTrain}</button>
   </div>
 {:else}
   <div class="results">
     <section class="run-list">
-      <span class="label-quiet">训练记录</span>
+      <span class="label-quiet">{t().results.history}</span>
       {#each runs as r (r.id)}
         <button class="run" class:active={r.id === run.id} onclick={() => ((selectedId = r.id), (message = ''))}>
           <span class="title">
-            <strong>训练 {r.name}</strong>
-            {#if STATUS[r.status]}<span class="state" class:bad={r.status === 'failed'}>{STATUS[r.status]}</span>{/if}
+            <strong>{t().common.runName(r.name)}</strong>
+            {#if t().results.status[r.status]}<span class="state" class:bad={r.status === 'failed'}>{t().results.status[r.status]}</span>{/if}
           </span>
-          <span class="meta num">{r.created_at.slice(5, 16)}，{r.num_images} 张，{r.config.epochs} 轮</span>
+          <span class="meta num">{t().results.runMeta(r.created_at.slice(5, 16), r.num_images, r.config.epochs)}</span>
           {#if r.best_checkpoint}
-            <span class="meta picked"><Star />选了第 {checkpointEpoch(r.best_checkpoint)} 轮</span>
+            <span class="meta picked"><Star />{t().results.picked(checkpointEpoch(r.best_checkpoint))}</span>
           {/if}
         </button>
       {/each}
@@ -178,22 +163,26 @@
     <section class="detail">
       <div class="head">
         <div class="summary">
-          <h2>训练 {run.name}</h2>
+          <h2>{t().common.runName(run.name)}</h2>
           <p class="muted">
-            {run.config.base_model.split(/[\\/]/).pop()?.replace('.safetensors', '')}，rank {run.config.network_dim}，学习率
-            {run.config.unet_lr}，{run.num_images} 张图片
+            {t().results.summary(
+              run.config.base_model.split(/[\\/]/).pop()?.replace('.safetensors', '') ?? '',
+              run.config.network_dim,
+              run.config.unet_lr,
+              run.num_images,
+            )}
           </p>
           {#if changes.length}
-            <p class="muted">和上一次相比：{changes.join('；')}</p>
+            <p class="muted">{t().results.changes(changes)}</p>
           {/if}
           {#if run.status !== 'queued' && run.status !== 'running'}
-            <button class="btn btn-xs btn-ghost text-error mt-1" onclick={remove}><Trash2 />删除这次训练</button>
+            <button class="btn btn-xs btn-ghost text-error mt-1" onclick={remove}><Trash2 />{t().results.deleteRun}</button>
           {/if}
         </div>
         <textarea
           class="textarea"
           rows="2"
-          placeholder="记下这次训练的结论，比如：第 6 轮最像，之后开始僵硬"
+          placeholder={t().results.notesPlaceholder}
           value={run.notes}
           oninput={(e) => saveNotes(e.currentTarget.value)}
         ></textarea>
@@ -202,37 +191,37 @@
       {#if message}<p class="message">{message}</p>{/if}
       {#if needExportDir}
         <div class="export-setup">
-          <span>导出到哪个文件夹？一般是出图软件放 LoRA 的目录。</span>
+          <span>{t().results.exportWhere}</span>
           <input class="input input-sm mono" type="text" placeholder="D:\ComfyUI\models\loras" bind:value={exportDir} />
           <button class="btn btn-sm btn-primary" disabled={!exportDir.trim()} onclick={() => saveExportDir(pendingExport)}>
-            保存并导出
+            {t().results.saveAndExport}
           </button>
         </div>
       {/if}
 
       {#if rows.length === 0}
-        <p class="muted pad">这次训练没有留下任何轮次。</p>
+        <p class="muted pad">{t().results.noRounds}</p>
       {:else}
         <!-- A contact sheet: rounds run left to right, so each prompt's strip reads as the training's progress. -->
         <div class="sheet" style:--cols={rows.length}>
           {#each rows as row (row.epoch)}
             {@const best = !!row.checkpoint && row.checkpoint === run.best_checkpoint}
             <div class="round" class:best>
-              <strong>{row.epoch === 0 ? '训练前' : `第 ${row.epoch} 轮`}</strong>
+              <strong>{t().common.round(row.epoch)}</strong>
               {#if row.checkpoint}
                 <div class="round-actions">
                   <button class={['btn btn-xs', best ? 'btn-primary' : 'btn-soft']} onclick={() => pick(row.checkpoint!)}>
-                    <Star />{best ? '最佳' : '选为最佳'}
+                    <Star />{best ? t().results.best : t().results.pickAsBest}
                   </button>
                   <button
                     class="btn btn-xs btn-ghost"
                     onclick={() => ((pendingExport = row.checkpoint), exportCheckpoint(row.checkpoint!))}
                   >
-                    <Download />导出
+                    <Download />{t().results.export}
                   </button>
                 </div>
               {:else if row.epoch === 0}
-                <span class="muted small">不带 LoRA 的对照</span>
+                <span class="muted small">{t().results.baselineNote}</span>
               {/if}
             </div>
           {/each}
@@ -243,7 +232,7 @@
               <div class="frame" class:best={row.checkpoint && row.checkpoint === run.best_checkpoint}>
                 {#if row.samples[i]}
                   <button class="image" onclick={() => (zoomed = sampleUrl(run.id, row.samples[i]))}>
-                    <img src={sampleUrl(run.id, row.samples[i])} alt="第 {row.epoch} 轮，提示词 {i + 1}" loading="lazy" />
+                    <img src={sampleUrl(run.id, row.samples[i])} alt={t().results.sampleAlt(t().common.round(row.epoch), i + 1)} loading="lazy" />
                   </button>
                 {/if}
               </div>
@@ -258,7 +247,7 @@
 {#if zoomed}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="lightbox" onclick={() => (zoomed = null)}>
-    <img src={zoomed} alt="放大的预览图" />
+    <img src={zoomed} alt={t().results.zoomedAlt} />
   </div>
 {/if}
 
