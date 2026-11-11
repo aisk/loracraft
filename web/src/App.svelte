@@ -2,6 +2,7 @@
   import { Check, ChevronRight, Moon, Plus, Settings, SlidersHorizontal, Sun } from '@lucide/svelte'
   import { api, runApi, thumbUrl, type Project, type Run } from './lib/api'
   import DatasetView from './lib/DatasetView.svelte'
+  import { GUIDES, countRange } from './lib/guidance'
   import NewProjectDialog from './lib/NewProjectDialog.svelte'
   import ResultsView from './lib/ResultsView.svelte'
   import SettingsDialog from './lib/SettingsDialog.svelte'
@@ -104,8 +105,10 @@
       {
         id: 'dataset' as TabId,
         label: '数据集',
-        status: count ? `${count} 张图片` + (uncaptioned ? `，${uncaptioned} 张没有标注` : '') : '先放入图片',
-        done: count > 0 && uncaptioned === 0,
+        status: count
+          ? `${count} 张图片` + (uncaptioned ? `，${uncaptioned} 张没有标注` : count < GUIDES[current.kind].min ? '，偏少' : '')
+          : `先放入 ${countRange(current.kind)}图片`,
+        done: count >= GUIDES[current.kind].min && uncaptioned === 0,
         live: false,
       },
       { id: 'train' as TabId, label: '训练', status: train, done: finished.length > 0 && !activeRun, live: !!activeRun },

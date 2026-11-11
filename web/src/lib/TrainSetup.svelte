@@ -12,6 +12,7 @@
     type TrainerStatus,
     type TrainSettings,
   } from './api'
+  import { countAdvice } from './guidance'
 
   let {
     project,
@@ -151,6 +152,7 @@
   const steps = $derived(Math.ceil((images.length * settings.repeats) / settings.batch_size) * settings.epochs)
   const secondsPerStep = $derived(lastRun?.progress.seconds_per_step ?? null)
 
+  const count = $derived(countAdvice(project.kind, images.length))
   const uncaptioned = $derived(images.filter((i) => !i.caption).length)
   const withTrigger = $derived(
     project.trigger ? images.filter((i) => splitTags(i.caption).includes(project.trigger)).length : 0,
@@ -396,6 +398,11 @@
       <dd class="num">{Math.ceil(settings.epochs / settings.save_every_n_epochs)} 个可选的 LoRA</dd>
     </dl>
 
+    {#if images.length > 0 && !count.ok}
+      <p class="warn">
+        {count.text}现在也能训练，结果不理想时先补图。<button class="link link-primary" onclick={ongotodataset}>去数据集</button>
+      </p>
+    {/if}
     {#if uncaptioned > 0}
       <p class="warn">有 {uncaptioned} 张图片没有标注，它们会被当作"无提示词"来学。<button class="link link-primary" onclick={ongotodataset}>去处理</button></p>
     {/if}

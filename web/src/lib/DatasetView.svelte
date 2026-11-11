@@ -1,12 +1,11 @@
 <script lang="ts">
   import { ArrowRight, Check, ImagePlus, Search, Sparkles, Trash2, TriangleAlert, X } from '@lucide/svelte'
   import { api, fileUrl, splitTags, thumbUrl, type DatasetImage, type ImportResult, type Project } from './api'
+  import { COMMON_TIPS, CONSTANT_ADVICE, GUIDES, SMALL_SIDE, constantTags, countAdvice, countRange } from './guidance'
   import TagChips from './TagChips.svelte'
   import TaggingPanel from './TaggingPanel.svelte'
 
   let { project, onchange }: { project: Project; onchange: () => void } = $props()
-
-  const SMALL_SIDE = 768 // images whose short side is below this are flagged
 
   let images = $state<DatasetImage[]>([])
   let selected = $state(new Set<number>())
@@ -51,6 +50,14 @@
     }),
   )
   const selectedImages = $derived(images.filter((i) => selected.has(i.id)))
+
+  // Is the dataset ready to train on?
+  const guide = $derived(GUIDES[project.kind])
+  const count = $derived(countAdvice(project.kind, images.length))
+  const constant = $derived(constantTags(project, images))
+  const missingTrigger = $derived(
+    project.trigger ? images.filter((i) => !splitTags(i.caption).includes(project.trigger)).length : 0,
+  )
   const single = $derived(selectedImages.length === 1 ? selectedImages[0] : null)
 
   // For a multi-selection: tags on every selected image, and tags on only some of them.
@@ -170,6 +177,11 @@
 
   const setCaption = (image: DatasetImage, tags: string[]) =>
     run('', async () => applyUpdates([await api.updateCaption(image.id, tags.join(', '))]))
+
+  const addTriggerToAll = () =>
+    run('', async () =>
+      applyUpdates(await api.editTags({ image_ids: images.map((i) => i.id), add: [project.trigger], add_position: 'start' })),
+    )
 
   function submitBatchAdd(position: 'start' | 'end') {
     const tags = splitTags(batchAdd)
@@ -298,6 +310,12 @@
             <ImagePlus class="big-icon" />
             <h2>把图片拖到这里</h2>
             <p class="muted">同名的 .txt 会作为标注一起导入。也可以点右上角的"放入图片"。</p>
+            <div class="guide">
+              <p class="guide-lead">学{guide.noun}，准备 <b class="num">{countRange(project.kind)}</b></p>
+              <ul>
+                {#each [...guide.tips, ...COMMON_TIPS] as tip (tip)}<li>{tip}</li>{/each}
+              </ul>
+            </div>
           {/if}
         </div>
       {/each}
@@ -372,6 +390,73 @@
           <span class="muted">张没标注</span>
         </div>
       </div>
+      {#if images.length}
+        <div class="panel-head"><span class="label-quiet">可以训练了吗</span></div>
+        <ul class="checks">
+          <li class:bad={!count.ok}>
+            {#if count.ok}<Check />{:else}<TriangleAlert />{/if}
+            <span>{count.text}</span>
+          </li>
+          <li class:bad={uncaptionedCount > 0}>
+            {#if uncaptionedCount}<TriangleAlert />{:else}<Check />{/if}
+            <span>
+              {#if uncaptionedCount}
+                {uncaptionedCount} 张没有标注，训练时学不到它们该对应什么词。
+                <button class="link link-primary" onclick={() => (filterProblem = 'uncaptioned')}>看看是哪些</button>
+              {:else}
+                每张图片都有标注。
+              {/if}
+            </span>
+          </li>
+          {#if project.trigger}
+            <li class:bad={missingTrigger > 0}>
+              {#if missingTrigger}<TriangleAlert />{:else}<Check />{/if}
+              <span>
+                {#if missingTrigger}
+                  {missingTrigger} 张的标注里没有触发词 <code>{project.trigger}</code>。
+                  <button class="link link-primary" onclick={addTriggerToAll}>加到所有图片最前面</button>
+                {:else}
+                  每张图片的标注里都有触发词 <code>{project.trigger}</code>。
+                {/if}
+              </span>
+            </li>
+          {/if}
+          {#if smallCount}
+            <li class="bad">
+              <TriangleAlert />
+              <span>
+                {smallCount} 张短边不到 {SMALL_SIDE} 像素，训练时会被放大，细节发糊。能换成大图就换。
+                <button class="link link-primary" onclick={() => (filterProblem = 'small')}>看看是哪些</button>
+              </span>
+            </li>
+          {/if}
+          {#if constant.length}
+            <li class="bad">
+              <TriangleAlert />
+              <span>
+                几乎每张图都有这些标签：
+                <span class="constant">
+                  {#each constant.slice(0, 8) as tag (tag)}
+                    <button class="mini-tag" class:active={filterTags.includes(tag)} onclick={() => toggleFilterTag(tag)}>{tag}</button>
+                  {/each}
+                  {#if constant.length > 8}<span class="muted">等 {constant.length} 个</span>{/if}
+                </span>
+                {CONSTANT_ADVICE[project.kind]}
+              </span>
+            </li>
+          {/if}
+        </ul>
+
+        <!-- With no images yet, the empty state in the centre says the same. -->
+        <details class="tips" open={!count.ok}>
+          <summary>什么样的图片合适</summary>
+          <p>学{guide.noun}，一般准备 {countRange(project.kind)}。</p>
+          <ul>
+            {#each [...guide.tips, ...COMMON_TIPS] as tip (tip)}<li>{tip}</li>{/each}
+          </ul>
+        </details>
+      {/if}
+
       <p class="muted hint">点一张图片，在这里改它的标签。选中多张可以一起改。</p>
       <dl class="keys">
         <dt><kbd class="kbd kbd-sm">Ctrl</kbd> + 点击</dt>
@@ -667,6 +752,100 @@
   }
   .empty h2 {
     font-size: var(--text-xl);
+  }
+
+  .guide {
+    max-width: 460px;
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+    text-align: left;
+  }
+  .guide-lead {
+    margin: 0 0 var(--space-2);
+    font-size: 15px;
+  }
+  .guide-lead b {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .guide ul,
+  .tips ul {
+    margin: 0;
+    padding-left: 1.2em;
+    list-style: disc;
+    color: var(--text-2);
+    line-height: 1.7;
+  }
+  .guide li + li,
+  .tips li + li {
+    margin-top: var(--space-1);
+  }
+
+  .checks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .checks li {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: var(--space-2);
+  }
+  .checks li > :global(svg) {
+    width: 14px;
+    height: 14px;
+    margin-top: 3px;
+    color: var(--ok);
+  }
+  .checks li.bad {
+    color: var(--text);
+  }
+  .checks li.bad > :global(svg) {
+    color: var(--warn);
+  }
+  .checks code {
+    font-family: var(--font-mono);
+  }
+  .constant {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+    margin: var(--space-1) 0;
+  }
+  .mini-tag {
+    padding: 0 6px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 20px;
+  }
+  .mini-tag:hover {
+    background: var(--border-strong);
+  }
+  .mini-tag.active {
+    background: var(--accent-bg);
+    color: var(--accent);
+  }
+  .tips {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+  }
+  .tips summary {
+    cursor: pointer;
+    color: var(--text-2);
+    width: fit-content;
+  }
+  .tips p {
+    margin: var(--space-2) 0;
   }
 
   .preview {

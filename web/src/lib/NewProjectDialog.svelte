@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Project } from './api'
+  import { GUIDES, countRange } from './guidance'
 
   // Creates a project, or edits `project` when one is given.
   let {
@@ -66,6 +67,7 @@
         <option value="concept">一个概念（服装、姿势等）</option>
       </select>
     </label>
+    <p class="help">准备 {countRange(kind)}图片。{GUIDES[kind].tips[0]}</p>
 
     <label>
       <span>触发词</span>
