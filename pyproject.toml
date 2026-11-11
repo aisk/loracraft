@@ -39,11 +39,15 @@ dependencies = [
 Homepage = "https://github.com/aisk/loracraft"
 Issues = "https://github.com/aisk/loracraft/issues"
 
+[project.optional-dependencies]
+# `loracraft --window`: the UI in a window of its own, through the system's web view.
+app = ["pywebview>=5"]
+
 [project.scripts]
 loracraft = "loracraft.server.app:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.13"]
+dev = ["pytest>=8", "ruff>=0.13", "loracraft[app]"]
 # The PyTorch build used for development: AMD ROCm (TheRock) multi-arch wheels for an RDNA2 card
 # (gfx1030) on Windows. Not part of the published package.
 torch-rocm = [

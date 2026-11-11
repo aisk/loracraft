@@ -66,9 +66,45 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(prog="loracraft", description="LoRA training workbench")
     parser.add_argument("--port", type=int, default=8600, help="port to listen on (default: %(default)s)")
+    parser.add_argument(
+        "--window", action="store_true", help="open in a window of its own instead of serving a browser"
+    )
     args = parser.parse_args()
 
     if not WEB_DIST.is_dir():
         print(f"The web UI is not built ({WEB_DIST} is missing): only the API will be served.", file=sys.stderr)
     print(f"Data directory: {db.workspace()}")
-    uvicorn.run("loracraft.server.app:app", host="127.0.0.1", port=args.port)
+    if args.window:
+        run_in_window(args.port)
+    else:
+        uvicorn.run("loracraft.server.app:app", host="127.0.0.1", port=args.port)
+
+
+def run_in_window(port: int) -> None:
+    """Serve from a background thread and show the UI in the system's web view until it is closed.
+
+    Closing the window stops the server only. A training run in progress is its own process and
+    carries on; the next start picks it up, and starts whatever was still queued.
+    """
+    import threading
+    import time
+
+    import uvicorn
+
+    try:
+        import webview
+    except ImportError:
+        sys.exit('--window needs pywebview: pip install "loracraft[app]"')
+
+    server = uvicorn.Server(uvicorn.Config("loracraft.server.app:app", host="127.0.0.1", port=port))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started:
+        if not thread.is_alive():
+            sys.exit(1)  # the server could not start, e.g. the port is taken; it has said why
+        time.sleep(0.05)
+
+    webview.create_window("LoraCraft", f"http://127.0.0.1:{port}", width=1440, height=900, min_size=(960, 600))
+    webview.start()  # returns when the window is closed
+    server.should_exit = True
+    thread.join()

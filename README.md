@@ -55,6 +55,19 @@ loracraft                            # http://127.0.0.1:8600
 python -m loracraft --port 8700      # the same, on another port
 ```
 
+To use it as an app in a window of its own rather than in a browser tab, install the `app` extra:
+
+```sh
+pip install "loracraft[app]"
+loracraft --window
+```
+
+The window uses the system's web view: WebView2 on Windows (part of Windows 11), WKWebView on
+macOS; on Linux it needs GTK or Qt WebKit from the system packages, see the
+[pywebview documentation](https://pywebview.flowrl.com/guide/installation.html). Closing the window
+does not stop a training run in progress: it carries on, and LoraCraft picks it up when started
+again.
+
 User data (database, images, runs) lives in the per-user data directory, printed at startup:
 `%LOCALAPPDATA%\loracraft` on Windows, `~/Library/Application Support/loracraft` on macOS,
 `~/.local/share/loracraft` on Linux. Set `LORACRAFT_HOME` to keep it elsewhere.
