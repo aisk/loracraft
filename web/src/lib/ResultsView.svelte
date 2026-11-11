@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Download, GalleryHorizontalEnd, Star } from '@lucide/svelte'
   import { checkpointEpoch, parseSampleName, runApi, sampleUrl, type Project, type Run } from './api'
 
   let {
@@ -115,12 +116,15 @@
   <div class="empty muted">正在读取…</div>
 {:else if !run}
   <div class="empty">
-    <p class="muted">还没有训练过。训练完成后，这里会并排列出每一轮的预览图，方便挑出最好的一轮。</p>
-    <button class="primary" onclick={ongototrain}>去训练</button>
+    <GalleryHorizontalEnd class="big-icon" />
+    <h2>还没有可以挑的结果</h2>
+    <p class="muted">训练完成后，每一轮的预览图会在这里并排列出，方便你挑出最好的一轮。</p>
+    <button class="btn btn-primary" onclick={ongototrain}>去训练</button>
   </div>
 {:else}
   <div class="results">
-    <section class="list">
+    <section class="run-list">
+      <span class="label-quiet">训练记录</span>
       {#each runs as r (r.id)}
         <button class="run" class:active={r.id === run.id} onclick={() => ((selectedId = r.id), (message = ''))}>
           <span class="title">
@@ -128,7 +132,9 @@
             {#if STATUS[r.status]}<span class="state" class:bad={r.status === 'failed'}>{STATUS[r.status]}</span>{/if}
           </span>
           <span class="meta num">{r.created_at.slice(5, 16)}，{r.num_images} 张，{r.config.epochs} 轮</span>
-          {#if r.best_checkpoint}<span class="meta">已选第 {checkpointEpoch(r.best_checkpoint)} 轮</span>{/if}
+          {#if r.best_checkpoint}
+            <span class="meta picked"><Star />选了第 {checkpointEpoch(r.best_checkpoint)} 轮</span>
+          {/if}
         </button>
       {/each}
     </section>
@@ -146,6 +152,7 @@
           {/if}
         </div>
         <textarea
+          class="textarea"
           rows="2"
           placeholder="记下这次训练的结论，比如：第 6 轮最像，之后开始僵硬"
           value={run.notes}
@@ -156,26 +163,34 @@
       {#if message}<p class="message">{message}</p>{/if}
       {#if needExportDir}
         <div class="export-setup">
-          <span>导出到哪个文件夹？一般是出图软件的 LoRA 目录。</span>
-          <input type="text" placeholder="D:\ComfyUI\models\loras" bind:value={exportDir} />
-          <button class="primary" disabled={!exportDir.trim()} onclick={() => saveExportDir(pendingExport)}>保存并导出</button>
+          <span>导出到哪个文件夹？一般是出图软件放 LoRA 的目录。</span>
+          <input class="input input-sm mono" type="text" placeholder="D:\ComfyUI\models\loras" bind:value={exportDir} />
+          <button class="btn btn-sm btn-primary" disabled={!exportDir.trim()} onclick={() => saveExportDir(pendingExport)}>
+            保存并导出
+          </button>
         </div>
       {/if}
 
       {#if rows.length === 0}
         <p class="muted pad">这次训练没有留下任何轮次。</p>
       {:else}
-        <!-- Epochs run left to right, so one prompt's row reads as the training's progress. -->
-        <div class="matrix" style:--cols={rows.length}>
+        <!-- A contact sheet: rounds run left to right, so each prompt's strip reads as the training's progress. -->
+        <div class="sheet" style:--cols={rows.length}>
           {#each rows as row (row.epoch)}
-            <div class="epoch" class:best={row.checkpoint && row.checkpoint === run.best_checkpoint}>
+            {@const best = !!row.checkpoint && row.checkpoint === run.best_checkpoint}
+            <div class="round" class:best>
               <strong>{row.epoch === 0 ? '训练前' : `第 ${row.epoch} 轮`}</strong>
               {#if row.checkpoint}
-                <div class="epoch-actions">
-                  <button class:primary={row.checkpoint === run.best_checkpoint} onclick={() => pick(row.checkpoint!)}>
-                    {row.checkpoint === run.best_checkpoint ? '最佳' : '选为最佳'}
+                <div class="round-actions">
+                  <button class={['btn btn-xs', best ? 'btn-primary' : 'btn-soft']} onclick={() => pick(row.checkpoint!)}>
+                    <Star />{best ? '最佳' : '选为最佳'}
                   </button>
-                  <button onclick={() => ((pendingExport = row.checkpoint), exportCheckpoint(row.checkpoint!))}>导出</button>
+                  <button
+                    class="btn btn-xs btn-ghost"
+                    onclick={() => ((pendingExport = row.checkpoint), exportCheckpoint(row.checkpoint!))}
+                  >
+                    <Download />导出
+                  </button>
                 </div>
               {:else if row.epoch === 0}
                 <span class="muted small">不带 LoRA 的对照</span>
@@ -186,7 +201,7 @@
           {#each prompts as prompt, i (i)}
             <div class="prompt" title={prompt.prompt}><span>{prompt.prompt}</span></div>
             {#each rows as row (row.epoch)}
-              <div class="cell" class:best={row.checkpoint && row.checkpoint === run.best_checkpoint}>
+              <div class="frame" class:best={row.checkpoint && row.checkpoint === run.best_checkpoint}>
                 {#if row.samples[i]}
                   <button class="image" onclick={() => (zoomed = sampleUrl(run.id, row.samples[i]))}>
                     <img src={sampleUrl(run.id, row.samples[i])} alt="第 {row.epoch} 轮，提示词 {i + 1}" loading="lazy" />
@@ -219,41 +234,52 @@
     padding: var(--space-5);
     text-align: center;
   }
+  .empty :global(.big-icon) {
+    width: 40px;
+    height: 40px;
+    stroke-width: 1.5;
+    color: var(--accent);
+  }
+  .empty h2 {
+    font-size: var(--text-xl);
+  }
   .empty p {
-    max-width: 420px;
+    max-width: 40ch;
     line-height: 1.7;
-    margin: 0;
+    margin-bottom: var(--space-2);
   }
 
   .results {
     flex: 1;
     display: grid;
-    grid-template-columns: 216px minmax(0, 1fr);
+    grid-template-columns: 232px minmax(0, 1fr);
     min-height: 0;
   }
-  .list {
-    background: var(--surface);
+  .run-list {
     border-right: 1px solid var(--border);
     overflow-y: auto;
-    padding: var(--space-2);
+    padding: var(--space-4) var(--space-3);
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
+  .run-list .label-quiet {
+    padding: 0 var(--space-2) var(--space-2);
+  }
   .run {
-    height: auto;
     padding: var(--space-2);
-    border: none;
-    background: none;
+    border-radius: var(--radius);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
     text-align: left;
-    white-space: normal;
+  }
+  .run:hover {
+    background: color-mix(in oklab, var(--text) 5%, transparent);
   }
   .run.active {
-    background: var(--accent-bg);
+    background: var(--surface-2);
   }
   .title {
     display: flex;
@@ -269,7 +295,18 @@
   }
   .meta {
     font-size: var(--text-xs);
-    color: var(--text-2);
+    color: var(--text-3);
+  }
+  .picked {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--accent);
+  }
+  .picked :global(svg) {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
   }
 
   .detail {
@@ -277,30 +314,33 @@
     flex-direction: column;
     min-height: 0;
     overflow: auto;
+    background: var(--bg);
   }
   .head {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     gap: var(--space-4);
     padding: var(--space-4) var(--space-5);
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
+    position: sticky;
+    left: 0;
   }
   h2 {
     font-size: var(--text-lg);
   }
   .summary p {
-    margin: 4px 0 0;
+    margin-top: 4px;
     line-height: 1.6;
     overflow-wrap: anywhere;
   }
   .head textarea {
-    font-family: var(--font-ui);
+    font-family: var(--font-sans);
     font-size: var(--text-md);
     resize: none;
   }
   .message,
   .pad {
-    margin: 0;
     padding: var(--space-2) var(--space-5);
   }
   .message {
@@ -311,39 +351,38 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-5);
+    padding: var(--space-3) var(--space-5);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
   .export-setup input {
     flex: 1;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
   }
 
-  /* The comparison matrix: epochs across, one row per prompt. */
-  .matrix {
+  .sheet {
     display: grid;
-    grid-template-columns: repeat(var(--cols), 208px);
-    padding: var(--space-3) var(--space-5) var(--space-5);
+    grid-template-columns: repeat(var(--cols), 240px);
+    padding: var(--space-4) var(--space-5) var(--space-6);
     width: max-content;
   }
-  .epoch {
+  .round {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    padding: var(--space-2);
-    border-radius: var(--radius) var(--radius) 0 0;
-    min-height: 62px;
+    gap: 6px;
+    padding: var(--space-3) var(--space-2) var(--space-2);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    min-height: 72px;
   }
-  .epoch-actions {
+  .round strong {
+    font-family: var(--font-display);
+    font-size: 15px;
+  }
+  .round-actions {
     display: flex;
     gap: var(--space-1);
   }
-  .epoch button {
-    height: 24px;
-    padding: 0 var(--space-2);
-    font-size: var(--text-sm);
+  .round.best :global(.btn svg) {
+    fill: currentColor;
   }
   .prompt {
     grid-column: 1 / -1;
@@ -352,7 +391,7 @@
     font-size: var(--text-xs);
     color: var(--text-2);
   }
-  /* Keep the prompt readable while the strip scrolls sideways. */
+  /* Keep the prompt readable while the sheet scrolls sideways. */
   .prompt span {
     position: sticky;
     left: var(--space-5);
@@ -362,23 +401,28 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .cell {
+  .frame {
     padding: var(--space-2);
   }
-  .epoch.best,
-  .cell.best {
+  /* The chosen round is lit as one column, top to bottom. */
+  .round.best,
+  .frame.best {
     background: var(--accent-bg);
+  }
+  .frame.best:last-child,
+  .frame.best:nth-last-child(-n + 1) {
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   }
   .image {
     display: block;
     width: 100%;
-    height: auto;
-    padding: 0;
-    border: none;
-    background: var(--surface-2);
-    border-radius: 3px;
+    border-radius: 6px;
     overflow: hidden;
     cursor: zoom-in;
+    transition: transform 0.12s;
+  }
+  .image:hover {
+    transform: scale(1.015);
   }
   .image img {
     display: block;
@@ -392,7 +436,7 @@
     position: fixed;
     inset: 0;
     z-index: 10;
-    background: rgb(0 0 0 / 0.85);
+    background: rgb(0 0 0 / 0.9);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -401,5 +445,6 @@
   .lightbox img {
     max-width: 96vw;
     max-height: 96vh;
+    border-radius: var(--radius);
   }
 </style>

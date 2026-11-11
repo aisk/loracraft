@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Images, Square } from '@lucide/svelte'
   import { formatDuration, parseSampleName, runApi, sampleUrl, type Run } from './api'
 
   let { run }: { run: Run } = $props()
@@ -98,27 +99,41 @@
 
 <div class="monitor">
   <header>
-    <div class="status">
+    {#if p.total_steps}
+      <div class="percent num">{Math.floor(fraction * 100)}<span>%</span></div>
+    {:else}
+      <span class="loading loading-ring loading-xl waiting"></span>
+    {/if}
+    <div class="state">
       <h2>{headline}</h2>
       <p class="muted num">
         {#if p.total_steps}
-          {p.step} / {p.total_steps} 步
-          {#if remaining !== null && p.step > 0}，还需约 {formatDuration(remaining)}（不含出图）{/if}
+          {p.step} / {p.total_steps} 步{#if remaining !== null && p.step > 0}，还需约 {formatDuration(remaining)}（不含出图）{/if}
         {:else}
           训练 {run.name}，{run.num_images} 张图片
         {/if}
       </p>
     </div>
-    <button class="danger" disabled={stopping} onclick={stop}>停止训练</button>
+    <button class="btn btn-sm btn-outline btn-error" disabled={stopping} onclick={stop}><Square />停止训练</button>
   </header>
-  <div class="bar"><div style:width="{fraction * 100}%"></div></div>
+
+  <!-- One track for the whole training; the notches are the ends of the rounds. -->
+  <div class="track" role="progressbar" aria-valuenow={Math.round(fraction * 100)} aria-valuemin="0" aria-valuemax="100">
+    <div class="fill" style:width="{fraction * 100}%"></div>
+    {#each { length: run.config.epochs - 1 }, i (i)}
+      <span class="notch" style:left="{((i + 1) / run.config.epochs) * 100}%"></span>
+    {/each}
+  </div>
 
   <div class="body">
     <section class="samples">
       {#if shownEpoch !== null}
         <div class="epochs">
           {#each epochs as epoch (epoch)}
-            <button class:active={epoch === shownEpoch} onclick={() => (viewEpoch = epoch === epochs.at(-1) ? null : epoch)}>
+            <button
+              class={['btn btn-xs', epoch === shownEpoch ? 'btn-primary' : 'btn-ghost']}
+              onclick={() => (viewEpoch = epoch === epochs.at(-1) ? null : epoch)}
+            >
               {epoch === 0 ? '训练前' : `第 ${epoch} 轮`}
             </button>
           {/each}
@@ -136,32 +151,47 @@
           {/each}
         </div>
       {:else}
-        <p class="muted placeholder">
-          {run.config.sample_prompts.length ? '预览图会在这里出现：先是一组训练前的对照图，之后每轮一组。' : '这次训练没有设置预览提示词。'}
-        </p>
+        <div class="placeholder">
+          <Images />
+          <p class="muted">
+            {run.config.sample_prompts.length
+              ? '预览图会出现在这里：先是一组训练前的对照图，之后每轮一组。'
+              : '这次训练没有设置预览提示词。'}
+          </p>
+        </div>
       {/if}
     </section>
 
     <aside>
-      <h3>Loss</h3>
+      <div class="facts">
+        <div>
+          <span class="figure num">{p.seconds_per_step ? p.seconds_per_step.toFixed(2) : '—'}</span>
+          <span class="muted">秒 / 步</span>
+        </div>
+        <div>
+          <span class="figure num">{losses.at(-1)?.toFixed(3) ?? '—'}</span>
+          <span class="muted">Loss</span>
+        </div>
+      </div>
+
       {#if chart}
         <svg viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="loss 曲线">
           <polyline points={chart.points} />
         </svg>
-        <p class="muted num range">{chart.min.toFixed(4)} – {chart.max.toFixed(4)}，当前 {losses.at(-1)?.toFixed(4)}</p>
-      {:else}
-        <p class="muted">训练开始后显示。</p>
+        <p class="muted num">最低 {chart.min.toFixed(4)}，最高 {chart.max.toFixed(4)}</p>
       {/if}
-      <p class="muted note">Loss 只说明模型在拟合，不能说明效果好坏。判断哪一轮最好，主要看预览图。</p>
+      <p class="muted">Loss 只说明模型在拟合，不能说明效果好坏。哪一轮最好，主要看预览图。</p>
 
-      <h3>设置</h3>
+      <h3>这次的设置</h3>
       <dl>
+        <dt>底模</dt>
+        <dd>{run.config.base_model.split(/[\\/]/).pop()?.replace(/\.safetensors$/, '')}</dd>
+        <dt>图片</dt>
+        <dd class="num">{run.num_images} 张</dd>
         <dt>容量</dt>
         <dd class="num">rank {run.config.network_dim}</dd>
         <dt>学习率</dt>
         <dd class="num">{run.config.unet_lr}</dd>
-        <dt>速度</dt>
-        <dd class="num">{p.seconds_per_step ? `${p.seconds_per_step.toFixed(2)} 秒 / 步` : '—'}</dd>
       </dl>
     </aside>
   </div>
@@ -177,32 +207,65 @@
   header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
+    padding: var(--space-5) var(--space-5) var(--space-4);
+  }
+  .percent {
+    font-family: var(--font-display);
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--accent);
+    min-width: 2.2ch;
+    text-align: right;
+  }
+  .percent span {
+    font-size: 22px;
+    margin-left: 2px;
+  }
+  .waiting {
+    color: var(--accent);
+    margin: 0 var(--space-2);
+  }
+  .state {
+    flex: 1;
+    min-width: 0;
   }
   h2 {
-    font-size: 18px;
+    font-size: var(--text-xl);
   }
-  header p {
-    margin: 2px 0 0;
-  }
-  .bar {
-    height: 3px;
-    background: var(--border);
+
+  .track {
+    position: relative;
+    height: 6px;
+    margin: 0 var(--space-5);
+    border-radius: 3px;
+    background: var(--surface-2);
     flex: none;
   }
-  .bar div {
+  .fill {
     height: 100%;
+    border-radius: 3px;
     background: var(--accent);
-    transition: width 0.4s;
+    box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 70%, transparent);
+    transition: width 0.6s ease-out;
+  }
+  .notch {
+    position: absolute;
+    top: -3px;
+    width: 2px;
+    height: 12px;
+    background: var(--surface);
   }
 
   .body {
     flex: 1;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-columns: minmax(0, 1fr) 300px;
     min-height: 0;
+    margin-top: var(--space-4);
+    border-top: 1px solid var(--border);
   }
   .samples {
     display: flex;
@@ -210,6 +273,7 @@
     gap: var(--space-3);
     padding: var(--space-4) var(--space-5);
     min-height: 0;
+    background: var(--bg);
   }
   .epochs {
     display: flex;
@@ -217,30 +281,18 @@
     gap: var(--space-1);
     flex: none;
   }
-  .epochs button {
-    height: 24px;
-    padding: 0 var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--text-2);
-  }
-  .epochs button.active {
-    border-color: var(--accent);
-    background: var(--accent-bg);
-    color: var(--accent);
-  }
   .images {
     flex: 1;
     display: flex;
-    gap: var(--space-3);
+    gap: var(--space-4);
     min-height: 0;
   }
   figure {
     flex: 1;
     min-width: 0;
-    margin: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-2);
   }
   figure img {
     flex: 1;
@@ -248,6 +300,7 @@
     width: 100%;
     object-fit: contain;
     object-position: left top;
+    border-radius: var(--radius);
   }
   figcaption {
     font-family: var(--font-mono);
@@ -259,29 +312,53 @@
     flex: none;
   }
   .placeholder {
-    margin: 80px 0;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    max-width: 36ch;
+    text-align: center;
+  }
+  .placeholder :global(svg) {
+    width: 36px;
+    height: 36px;
+    stroke-width: 1.5;
+    color: var(--text-3);
   }
 
   aside {
     padding: var(--space-4);
-    background: var(--surface);
     border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-3);
     overflow-y: auto;
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+  .facts div {
+    display: flex;
+    flex-direction: column;
+    font-size: var(--text-sm);
+  }
+  .figure {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 650;
+    line-height: 1.2;
   }
   h3 {
     font-size: var(--text-md);
-    margin-top: var(--space-3);
+    margin-top: var(--space-2);
   }
-  h3:first-child {
-    margin-top: 0;
-  }
-  svg {
+  aside svg {
     width: 100%;
     height: 96px;
-    background: var(--surface-2);
+    background: var(--bg);
     border-radius: var(--radius);
   }
   polyline {
@@ -291,7 +368,6 @@
     vector-effect: non-scaling-stroke;
   }
   aside p {
-    margin: 0;
     font-size: var(--text-sm);
     line-height: 1.6;
   }
@@ -299,13 +375,12 @@
     display: grid;
     grid-template-columns: auto 1fr;
     gap: var(--space-1) var(--space-3);
-    margin: 0;
   }
   dt {
     color: var(--text-2);
   }
   dd {
-    margin: 0;
     text-align: right;
+    overflow-wrap: anywhere;
   }
 </style>

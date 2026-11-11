@@ -1,154 +1,220 @@
-/* Design tokens. Dense, quiet chrome; the images are the content. */
-:root {
-  color-scheme: light dark;
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource-variable/jetbrains-mono';
 
-  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
-  --font-mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+@plugin 'daisyui' {
+  themes: false;
+}
+
+/* Darkroom: neutral charcoal so the images keep their own colours, lit by one safelight orange. */
+@plugin 'daisyui/theme' {
+  name: 'darkroom';
+  default: true;
+  color-scheme: dark;
+  --color-base-100: #1c1c1f;
+  --color-base-200: #141416;
+  --color-base-300: #29292d;
+  --color-base-content: #ededf0;
+  --color-primary: #ff9838;
+  --color-primary-content: #1d1002;
+  --color-secondary: #3a3a40;
+  --color-secondary-content: #ededf0;
+  --color-accent: #ff9838;
+  --color-accent-content: #1d1002;
+  --color-neutral: #2f2f34;
+  --color-neutral-content: #ededf0;
+  --color-info: #6cb6ff;
+  --color-info-content: #06192b;
+  --color-success: #5fd38d;
+  --color-success-content: #05210f;
+  --color-warning: #f2c14e;
+  --color-warning-content: #2a1d00;
+  --color-error: #ff6b5e;
+  --color-error-content: #2b0704;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin 'daisyui/theme' {
+  name: 'daylight';
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f3f3f2;
+  --color-base-300: #e4e4e2;
+  --color-base-content: #1b1b1d;
+  --color-primary: #e8610a;
+  --color-primary-content: #ffffff;
+  --color-secondary: #e4e4e2;
+  --color-secondary-content: #1b1b1d;
+  --color-accent: #e8610a;
+  --color-accent-content: #ffffff;
+  --color-neutral: #2a2a2e;
+  --color-neutral-content: #f3f3f2;
+  --color-info: #1f6fd0;
+  --color-info-content: #ffffff;
+  --color-success: #1d8a4c;
+  --color-success-content: #ffffff;
+  --color-warning: #a86400;
+  --color-warning-content: #ffffff;
+  --color-error: #c8352a;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@theme {
+  --font-sans: 'Inter Variable', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'Cascadia Code', Consolas, ui-monospace, monospace;
+}
+
+/* Names the components use, defined once in terms of the theme. */
+:root {
+  --bg: var(--color-base-200);
+  --surface: var(--color-base-100);
+  --surface-2: var(--color-base-300);
+  --border: color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  --border-strong: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  --text: var(--color-base-content);
+  --text-2: color-mix(in oklab, var(--color-base-content) 66%, transparent);
+  --text-3: color-mix(in oklab, var(--color-base-content) 44%, transparent);
+  --accent: var(--color-primary);
+  --accent-bg: color-mix(in oklab, var(--color-primary) 16%, transparent);
+  --warn: var(--color-warning);
+  --danger: var(--color-error);
+  --ok: var(--color-success);
 
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
-  --text-lg: 15px;
+  --text-lg: 16px;
+  --text-xl: 22px;
 
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+  --space-6: 32px;
 
-  --radius: 5px;
-  --row-height: 28px;
-
-  --bg: light-dark(#f6f6f4, #17181a);
-  --surface: light-dark(#ffffff, #1e2023);
-  --surface-2: light-dark(#efefec, #26292d);
-  --border: light-dark(#dcdcd6, #33373c);
-  --text: light-dark(#1c1d1f, #e4e5e7);
-  --text-2: light-dark(#5d6066, #9a9ea6);
-  --text-3: light-dark(#8d9097, #6b6f77);
-  --accent: light-dark(#2f6fde, #6ea2ff);
-  --accent-bg: light-dark(#e3edfd, #233453);
-  --warn: light-dark(#b25e00, #e6a04a);
-  --danger: light-dark(#c0392b, #ef7b6f);
-}
-
-* {
-  box-sizing: border-box;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --row-height: 32px;
 }
 
 html,
 body,
 #app {
   height: 100%;
-  margin: 0;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font: var(--text-md) / 1.45 var(--font-ui);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
-}
-
-button {
-  height: var(--row-height);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  cursor: pointer;
-  white-space: nowrap;
-}
-button:hover:not(:disabled) {
-  background: var(--surface-2);
-}
-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: light-dark(#fff, #0d1420);
-  font-weight: 600;
-}
-button.primary:hover:not(:disabled) {
-  background: var(--accent);
-  filter: brightness(1.08);
-}
-button.ghost {
-  border-color: transparent;
-  background: transparent;
-}
-button.danger {
-  color: var(--danger);
-}
-
-input[type='text'],
-input[type='search'],
-select,
-textarea {
-  height: var(--row-height);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  min-width: 0;
-}
-textarea {
-  height: auto;
-  padding: var(--space-2);
-  resize: vertical;
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
-:is(input, select, textarea, button):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
 }
 
 h1,
 h2,
 h3 {
-  margin: 0;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
-/* Section label: quiet heading used in side panels. */
-.label {
-  font-size: var(--text-xs);
+button:not(:disabled),
+summary,
+label:has(input[type='checkbox'], input[type='radio']) {
+  cursor: pointer;
+}
+
+/* daisyUI sizes its fields for forms on a marketing page; this is a dense tool. */
+.input,
+.select,
+.textarea {
+  font-size: var(--text-md);
+  background-color: var(--bg);
+  border-color: var(--border-strong);
+}
+.input,
+.select {
+  --size: 2rem;
+  width: 100%;
+}
+.textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.btn {
+  --size: 2rem;
+  font-size: var(--text-md);
+  font-weight: 550;
+  padding-inline: 0.75rem;
+  white-space: nowrap;
+}
+.btn.btn-xs {
+  --size: 1.5rem;
+  font-size: var(--text-sm);
+  padding-inline: 0.5rem;
+}
+.btn.btn-lg {
+  --size: 2.5rem;
+  font-size: 14px;
+  padding-inline: 1.25rem;
+}
+.btn svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.checkbox {
+  border-color: var(--text-3);
+}
+.range {
+  --range-bg: var(--surface-2);
+}
+
+/* A quiet heading for side panels and form groups. */
+.label-quiet {
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 .muted {
   color: var(--text-2);
 }
-
 .num {
   font-variant-numeric: tabular-nums;
 }
-
-dialog {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  padding: var(--space-5);
-  width: 420px;
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+.mono {
+  font-family: var(--font-mono);
 }
-dialog::backdrop {
-  background: rgb(0 0 0 / 0.4);
+
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.5);
 }
 
 ::-webkit-scrollbar {
@@ -156,8 +222,18 @@ dialog::backdrop {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-strong);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: content-box;
+}
+::selection {
+  background: color-mix(in oklab, var(--color-primary) 40%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

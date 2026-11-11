@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ArrowRight, Check, ImagePlus, Search, Sparkles, Trash2, TriangleAlert, X } from '@lucide/svelte'
   import { api, fileUrl, splitTags, thumbUrl, type DatasetImage, type ImportResult, type Project } from './api'
   import TagChips from './TagChips.svelte'
   import TaggingPanel from './TaggingPanel.svelte'
@@ -187,70 +188,82 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="dataset">
-  <!-- Left: filters -->
+  <!-- Left: what is in the captions, and what needs attention -->
   <section class="filters">
+    {#if uncaptionedCount || smallCount}
+      <div class="panel-head"><span class="label-quiet">需要留意</span></div>
+      {#if uncaptionedCount}
+        <button
+          class="issue"
+          class:active={filterProblem === 'uncaptioned'}
+          onclick={() => (filterProblem = filterProblem === 'uncaptioned' ? '' : 'uncaptioned')}
+        >
+          <TriangleAlert /><span>没有标注</span><span class="num">{uncaptionedCount}</span>
+        </button>
+      {/if}
+      {#if smallCount}
+        <button
+          class="issue"
+          class:active={filterProblem === 'small'}
+          onclick={() => (filterProblem = filterProblem === 'small' ? '' : 'small')}
+        >
+          <TriangleAlert /><span>短边不到 {SMALL_SIDE} 像素</span><span class="num">{smallCount}</span>
+        </button>
+      {/if}
+    {/if}
+
     <div class="panel-head">
-      <span class="label">标签</span>
-      <span class="muted num">{tagCounts.length}</span>
+      <span class="label-quiet">标签</span>
+      <span class="muted num">{tagCounts.length} 种</span>
     </div>
-    <input type="search" placeholder="筛选标签" bind:value={tagSearch} />
+    <label class="input input-sm">
+      <Search />
+      <input type="search" placeholder="找标签" bind:value={tagSearch} />
+    </label>
     <div class="tag-list">
       {#each visibleTagCounts as [tag, count] (tag)}
-        <button class="tag-row" class:active={filterTags.includes(tag)} onclick={() => toggleFilterTag(tag)}>
+        <!-- The bar shows how much of the dataset carries the tag. -->
+        <button
+          class="tag-row"
+          class:active={filterTags.includes(tag)}
+          style:--share="{(count / images.length) * 100}%"
+          onclick={() => toggleFilterTag(tag)}
+        >
           <span class="tag-name">{tag}</span>
           <span class="num">{count}</span>
         </button>
       {:else}
-        <p class="muted hint">{images.length ? '没有匹配的标签' : '导入图片后，这里会列出所有标签及出现次数。'}</p>
+        <p class="muted hint">{images.length ? '没有匹配的标签' : '放入图片后，这里会列出所有标签和出现的次数。'}</p>
       {/each}
     </div>
-
-    <div class="panel-head"><span class="label">问题</span></div>
-    <button
-      class="tag-row"
-      class:active={filterProblem === 'uncaptioned'}
-      disabled={!uncaptionedCount}
-      onclick={() => (filterProblem = filterProblem === 'uncaptioned' ? '' : 'uncaptioned')}
-    >
-      <span class:warn={uncaptionedCount > 0}>缺标注</span>
-      <span class="num">{uncaptionedCount}</span>
-    </button>
-    <button
-      class="tag-row"
-      class:active={filterProblem === 'small'}
-      disabled={!smallCount}
-      onclick={() => (filterProblem = filterProblem === 'small' ? '' : 'small')}
-    >
-      <span class:warn={smallCount > 0}>短边小于 {SMALL_SIDE}</span>
-      <span class="num">{smallCount}</span>
-    </button>
   </section>
 
-  <!-- Centre: grid -->
+  <!-- Centre: the images -->
   <section class="grid-area">
     <div class="toolbar">
-      <span class="num">
-        {#if visible.length !== images.length}{visible.length} / {/if}{images.length} 张
-        {#if selected.size}<span class="muted"> · 已选 {selected.size}</span>{/if}
+      <span class="count num">
+        {#if visible.length !== images.length}{visible.length} / {/if}{images.length} 张{#if selected.size}，<b>已选 {selected.size}</b>{/if}
       </span>
       {#if filterTags.length || filterProblem}
-        <button class="ghost" onclick={() => ((filterTags = []), (filterProblem = ''))}>清除筛选</button>
+        <button class="btn btn-xs btn-soft" onclick={() => ((filterTags = []), (filterProblem = ''))}><X />取消筛选</button>
       {/if}
-      <span class="status" class:error={message && !message.startsWith('已')}>{busy || message}</span>
+      <span class="notice-text" class:error={message && !message.startsWith('已')}>{busy || message}</span>
       <span class="spacer"></span>
-      <input class="size" type="range" min="96" max="320" step="8" bind:value={thumbSize} title="缩略图大小" />
-      <button class="danger" disabled={!selected.size} onclick={deleteSelected}>删除</button>
-      <button disabled={!images.length} onclick={() => (showTagging = true)}>自动标注</button>
-      <button class="primary" onclick={() => (showImport = !showImport)}>导入</button>
+      <input class="range range-xs size" type="range" min="96" max="320" step="8" bind:value={thumbSize} title="缩略图大小" />
+      {#if selected.size}
+        <button class="btn btn-sm btn-ghost text-error" onclick={deleteSelected}><Trash2 />删除</button>
+      {/if}
+      <button class="btn btn-sm" disabled={!images.length} onclick={() => (showTagging = true)}><Sparkles />自动标注</button>
+      <button class="btn btn-sm btn-primary" onclick={() => (showImport = !showImport)}><ImagePlus />放入图片</button>
     </div>
 
     {#if showImport}
       <div class="import-bar">
-        <button onclick={() => fileInput.click()}>选择文件…</button>
-        <span class="muted">或填写本机文件夹路径：</span>
-        <input type="text" class="path" placeholder="D:\datasets\my-character" bind:value={folderPath} />
-        <button disabled={!folderPath.trim() || !!busy} onclick={importFromFolder}>导入文件夹</button>
-        <span class="muted">同名 .txt 会作为标注一并导入。</span>
+        <button class="btn btn-sm" onclick={() => fileInput.click()}>选择文件…</button>
+        <span class="muted">或者填本机的文件夹：</span>
+        <input type="text" class="input input-sm path" placeholder="D:\datasets\my-character" bind:value={folderPath} />
+        <button class="btn btn-sm" disabled={!folderPath.trim() || !!busy} onclick={importFromFolder}>导入文件夹</button>
+        <span class="muted note">同名的 .txt 会作为标注一起导入。</span>
       </div>
     {/if}
     <input
@@ -264,7 +277,7 @@
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="grid"
+      class="thumbs"
       class:dragging
       style:--thumb="{thumbSize}px"
       ondragover={(e) => (e.preventDefault(), (dragging = true))}
@@ -274,22 +287,24 @@
       {#each visible as image (image.id)}
         <button class="cell" class:selected={selected.has(image.id)} onclick={(e) => clickImage(e, image)}>
           <img src={thumbUrl(image.id)} alt={image.filename} loading="lazy" draggable="false" />
-          {#if !image.caption}<span class="badge" title="缺标注">无标注</span>{/if}
+          {#if selected.has(image.id)}<span class="tick"><Check /></span>{/if}
+          {#if !image.caption}<span class="flag">没有标注</span>{/if}
         </button>
       {:else}
         <div class="empty">
           {#if images.length}
             <p class="muted">没有符合筛选条件的图片。</p>
           {:else}
-            <p>把图片（和同名 .txt 标注）拖到这里，</p>
-            <p class="muted">或点右上角的"导入"。</p>
+            <ImagePlus class="big-icon" />
+            <h2>把图片拖到这里</h2>
+            <p class="muted">同名的 .txt 会作为标注一起导入。也可以点右上角的"放入图片"。</p>
           {/if}
         </div>
       {/each}
     </div>
   </section>
 
-  <!-- Right: inspector -->
+  <!-- Right: the selection -->
   <section class="inspector">
     {#if single}
       <a class="preview" href={fileUrl(single.id)} target="_blank" rel="noreferrer" title="查看原图">
@@ -301,7 +316,7 @@
       </div>
 
       <div class="panel-head">
-        <span class="label">标签</span>
+        <span class="label-quiet">标签</span>
         <span class="muted num">{splitTags(single.caption).length}</span>
       </div>
       <TagChips
@@ -310,49 +325,64 @@
         suggestions={tagCounts.map(([tag]) => tag)}
       />
     {:else if selectedImages.length > 1}
-      <div class="panel-head">
-        <span class="label">已选 {selectedImages.length} 张</span>
-      </div>
+      <h3>已选 {selectedImages.length} 张</h3>
 
-      <div class="panel-head"><span class="label">共有标签</span></div>
+      <div class="panel-head"><span class="label-quiet">每张都有的标签</span></div>
       <TagChips tags={sharedTags.all} onremove={(tag) => editTags({ remove: [tag] })} readonlyOrder />
       {#if sharedTags.some.length}
-        <div class="panel-head"><span class="label">部分图片有</span></div>
+        <div class="panel-head"><span class="label-quiet">只有部分图片有</span></div>
         <TagChips tags={sharedTags.some} faded onremove={(tag) => editTags({ remove: [tag] })} readonlyOrder />
       {/if}
 
-      <div class="panel-head"><span class="label">批量添加</span></div>
+      <div class="panel-head"><span class="label-quiet">给它们都加上</span></div>
+      <input
+        type="text"
+        class="input input-sm mono"
+        placeholder="标签，用逗号分隔"
+        bind:value={batchAdd}
+        onkeydown={(e) => e.key === 'Enter' && submitBatchAdd('end')}
+      />
       <div class="row">
-        <input type="text" placeholder="标签，用逗号分隔" bind:value={batchAdd} onkeydown={(e) => e.key === 'Enter' && submitBatchAdd('end')} />
-      </div>
-      <div class="row">
-        <button disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('start')}>加到最前</button>
-        <button disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('end')}>加到最后</button>
+        <button class="btn btn-sm" disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('start')}>加到最前</button>
+        <button class="btn btn-sm" disabled={!batchAdd.trim()} onclick={() => submitBatchAdd('end')}>加到最后</button>
       </div>
 
-      <div class="panel-head"><span class="label">批量替换</span></div>
+      <div class="panel-head"><span class="label-quiet">把一个标签换成另一个</span></div>
       <div class="row">
-        <input type="text" placeholder="原标签" bind:value={replaceFrom} />
-        <span class="muted">→</span>
-        <input type="text" placeholder="新标签" bind:value={replaceTo} onkeydown={(e) => e.key === 'Enter' && submitReplace()} />
+        <input type="text" class="input input-sm mono" placeholder="原标签" bind:value={replaceFrom} />
+        <ArrowRight class="arrow" />
+        <input
+          type="text"
+          class="input input-sm mono"
+          placeholder="新标签"
+          bind:value={replaceTo}
+          onkeydown={(e) => e.key === 'Enter' && submitReplace()}
+        />
       </div>
       <div class="row">
-        <button disabled={!replaceFrom.trim() || !replaceTo.trim()} onclick={submitReplace}>替换</button>
+        <button class="btn btn-sm" disabled={!replaceFrom.trim() || !replaceTo.trim()} onclick={submitReplace}>替换</button>
       </div>
     {:else}
-      <div class="panel-head"><span class="label">数据集</span></div>
-      <dl>
-        <dt>图片</dt>
-        <dd class="num">{images.length}</dd>
-        <dt>不同标签</dt>
-        <dd class="num">{tagCounts.length}</dd>
-        <dt>缺标注</dt>
-        <dd class="num" class:warn={uncaptionedCount > 0}>{uncaptionedCount}</dd>
+      <h3>数据集</h3>
+      <div class="facts">
+        <div><span class="figure num">{images.length}</span><span class="muted">张图片</span></div>
+        <div><span class="figure num">{tagCounts.length}</span><span class="muted">种标签</span></div>
+        <div>
+          <span class="figure num" class:warn={uncaptionedCount > 0}>{uncaptionedCount}</span>
+          <span class="muted">张没标注</span>
+        </div>
+      </div>
+      <p class="muted hint">点一张图片，在这里改它的标签。选中多张可以一起改。</p>
+      <dl class="keys">
+        <dt><kbd class="kbd kbd-sm">Ctrl</kbd> + 点击</dt>
+        <dd>多选</dd>
+        <dt><kbd class="kbd kbd-sm">Shift</kbd> + 点击</dt>
+        <dd>连选</dd>
+        <dt><kbd class="kbd kbd-sm">Ctrl</kbd> + <kbd class="kbd kbd-sm">A</kbd></dt>
+        <dd>全选</dd>
+        <dt><kbd class="kbd kbd-sm">Delete</kbd></dt>
+        <dd>删除选中的</dd>
       </dl>
-      <p class="muted hint">
-        点击选中图片后在这里编辑标签。<br />
-        Ctrl+点击 多选，Shift+点击 连选，Ctrl+A 全选，Delete 删除。
-      </p>
     {/if}
   </section>
 
@@ -372,7 +402,7 @@
     position: relative;
     flex: 1;
     display: grid;
-    grid-template-columns: 216px 1fr 312px;
+    grid-template-columns: 232px 1fr 328px;
     min-height: 0;
   }
   section {
@@ -385,8 +415,7 @@
   .filters,
   .inspector {
     gap: var(--space-2);
-    padding: var(--space-3);
-    background: var(--surface);
+    padding: var(--space-4);
     overflow-y: auto;
   }
   .filters {
@@ -399,69 +428,131 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    margin-top: var(--space-2);
-    font-size: var(--text-xs);
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
   }
   .panel-head:first-child {
     margin-top: 0;
   }
+  h3 {
+    font-size: var(--text-lg);
+  }
 
+  .issue {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 6px var(--space-2);
+    border-radius: var(--radius);
+    background: color-mix(in oklab, var(--warn) 12%, transparent);
+    color: var(--warn);
+    font-size: var(--text-sm);
+    text-align: left;
+  }
+  .issue span:first-of-type {
+    flex: 1;
+  }
+  .issue :global(svg) {
+    width: 14px;
+    height: 14px;
+    flex: none;
+  }
+  .issue.active {
+    outline: 1.5px solid var(--warn);
+  }
+
+  .filters :global(label.input svg) {
+    width: 14px;
+    height: 14px;
+    opacity: 0.5;
+  }
   .tag-list {
     flex: 1;
     min-height: 80px;
     overflow-y: auto;
-    margin: 0 calc(-1 * var(--space-2));
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-right: calc(-1 * var(--space-2));
+    padding-right: var(--space-2);
   }
   .tag-row {
+    position: relative;
     display: flex;
     justify-content: space-between;
+    align-items: center;
     gap: var(--space-2);
-    width: 100%;
-    height: 24px;
+    height: 26px;
     padding: 0 var(--space-2);
-    border: none;
-    background: none;
+    border-radius: 6px;
     text-align: left;
     font-size: var(--text-sm);
-    color: var(--text-2);
+    color: var(--text-3);
     flex: none;
+    overflow: hidden;
+  }
+  .tag-row::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--share);
+    background: color-mix(in oklab, var(--text) 7%, transparent);
+    border-radius: 6px;
+  }
+  .tag-row > * {
+    position: relative;
+  }
+  .tag-row:hover::before {
+    background: color-mix(in oklab, var(--text) 13%, transparent);
   }
   .tag-row.active {
-    background: var(--accent-bg);
     color: var(--accent);
+  }
+  .tag-row.active::before {
+    background: var(--accent-bg);
   }
   .tag-name {
     font-family: var(--font-mono);
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tag-row.active .tag-name {
     color: inherit;
   }
   .hint {
     font-size: var(--text-sm);
-    padding: 0 var(--space-2);
     line-height: 1.7;
-  }
-  .inspector .hint {
-    padding: 0;
   }
   .warn {
     color: var(--warn);
   }
 
+  .grid-area {
+    background: var(--bg);
+  }
   .toolbar,
   .import-bar {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-2) var(--space-4);
     flex: none;
   }
+  .toolbar {
+    height: 52px;
+  }
+  .count b {
+    color: var(--accent);
+    font-weight: 600;
+  }
   .import-bar {
+    margin: 0 var(--space-4) var(--space-2);
+    padding: var(--space-3);
     background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     font-size: var(--text-sm);
     flex-wrap: wrap;
   }
@@ -469,81 +560,118 @@
     flex: 1;
     min-width: 200px;
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+  }
+  .note {
+    flex-basis: 100%;
   }
   .spacer {
     flex: 1;
   }
-  .status {
+  .notice-text {
     font-size: var(--text-sm);
     color: var(--text-2);
   }
-  .status.error {
+  .notice-text.error {
     color: var(--danger);
   }
   .size {
     width: 96px;
   }
 
-  .grid {
+  .thumbs {
     flex: 1;
     overflow-y: auto;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--thumb), 1fr));
     align-content: start;
     grid-auto-rows: max-content;
-    gap: var(--space-2);
-    padding: var(--space-3);
+    gap: 10px;
+    padding: var(--space-1) var(--space-4) var(--space-4);
   }
-  .grid.dragging {
+  .thumbs.dragging {
     outline: 2px dashed var(--accent);
-    outline-offset: -6px;
+    outline-offset: -8px;
+    border-radius: var(--radius-lg);
   }
   .cell {
     position: relative;
-    aspect-ratio: 1;
-    height: auto;
-    padding: 0;
-    border: 1px solid transparent;
+    aspect-ratio: 3 / 4;
     border-radius: var(--radius);
     background: var(--surface-2);
     overflow: hidden;
     width: 100%;
-    min-height: 0;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition:
+      outline-color 0.1s,
+      transform 0.1s;
   }
   .cell img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
+    object-position: center 20%;
     display: block;
   }
-  .cell.selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent);
+  .cell:hover {
+    outline-color: var(--border-strong);
   }
-  .badge {
+  .cell.selected {
+    outline-color: var(--accent);
+  }
+  .tick {
     position: absolute;
-    left: 4px;
-    bottom: 4px;
-    padding: 0 5px;
-    border-radius: 3px;
+    top: 6px;
+    right: 6px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--color-primary-content);
+  }
+  .tick :global(svg) {
+    width: 13px;
+    height: 13px;
+    stroke-width: 3;
+  }
+  .flag {
+    position: absolute;
+    left: 6px;
+    bottom: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
     background: var(--warn);
-    color: #fff;
+    color: var(--color-warning-content);
     font-size: var(--text-xs);
+    font-weight: 600;
   }
   .empty {
     grid-column: 1 / -1;
-    padding: 80px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 48px auto;
+    padding: 56px 48px;
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
     text-align: center;
   }
-  .empty p {
-    margin: 0;
-    line-height: 1.8;
+  .empty :global(.big-icon) {
+    width: 40px;
+    height: 40px;
+    color: var(--accent);
+    stroke-width: 1.5;
+  }
+  .empty h2 {
+    font-size: var(--text-xl);
   }
 
   .preview {
     display: block;
-    background: var(--surface-2);
+    background: var(--bg);
     border-radius: var(--radius);
     overflow: hidden;
     flex: none;
@@ -551,7 +679,7 @@
   .preview img {
     display: block;
     width: 100%;
-    max-height: 340px;
+    max-height: 380px;
     object-fit: contain;
   }
   .meta {
@@ -570,22 +698,37 @@
     align-items: center;
     gap: var(--space-2);
   }
-  .row input {
-    flex: 1;
-    font-family: var(--font-mono);
+  .row :global(.arrow) {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    color: var(--text-3);
+  }
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2);
+    margin: var(--space-2) 0;
+  }
+  .facts div {
+    display: flex;
+    flex-direction: column;
     font-size: var(--text-sm);
   }
-  dl {
+  .figure {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+  .keys {
     display: grid;
-    grid-template-columns: 1fr auto;
-    gap: var(--space-1) var(--space-3);
-    margin: 0;
-  }
-  dt {
+    grid-template-columns: auto 1fr;
+    gap: var(--space-2) var(--space-3);
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
     color: var(--text-2);
-  }
-  dd {
-    margin: 0;
-    text-align: right;
+    align-items: center;
   }
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { X } from '@lucide/svelte'
   import {
     runApi,
     splitTags,
@@ -158,7 +159,7 @@
     <h2>自动标注</h2>
     <span class="muted">让视觉模型看图写标注。结果先作为建议列出，你确认后才会写入。</span>
     <span class="spacer"></span>
-    <button onclick={onclose}>完成</button>
+    <button class="btn btn-sm" onclick={onclose}><X />关闭</button>
   </header>
 
   {#if !profile || !tagging}
@@ -170,17 +171,17 @@
           <h3>用哪个模型看图</h3>
           {#if editingModel}
             <p class="help">任何兼容 OpenAI 接口的视觉模型都可以：云端服务，或本机的 Ollama、LM Studio。素材不适合发到云端时，用本机模型。</p>
-            <label><span>服务地址</span><input type="text" class="mono" placeholder="http://localhost:11434/v1" bind:value={baseUrl} /></label>
-            <label><span>模型名</span><input type="text" class="mono" placeholder="qwen2.5vl:7b" bind:value={model} /></label>
-            <label><span>API Key</span><input type="text" class="mono" placeholder="本机模型可留空" bind:value={apiKey} /></label>
+            <label><span>服务地址</span><input type="text" class="input input-sm mono" placeholder="http://localhost:11434/v1" bind:value={baseUrl} /></label>
+            <label><span>模型名</span><input type="text" class="input input-sm mono" placeholder="qwen2.5vl:7b" bind:value={model} /></label>
+            <label><span>API Key</span><input type="text" class="input input-sm mono" placeholder="本机模型可留空" bind:value={apiKey} /></label>
             <div class="row">
-              <button class="primary" disabled={!baseUrl.trim() || !model.trim()} onclick={saveModel}>保存</button>
-              {#if tagging.configured}<button onclick={() => (editingModel = false)}>取消</button>{/if}
+              <button class="btn btn-sm btn-primary" disabled={!baseUrl.trim() || !model.trim()} onclick={saveModel}>保存</button>
+              {#if tagging.configured}<button class="btn btn-sm" onclick={() => (editingModel = false)}>取消</button>{/if}
             </div>
           {:else}
             <div class="row">
               <code>{model}</code>
-              <button class="link" onclick={() => (editingModel = true)}>更改</button>
+              <button class="link link-primary" onclick={() => (editingModel = true)}>更改</button>
             </div>
           {/if}
         </section>
@@ -189,39 +190,39 @@
           <h3>这个 LoRA 要学什么</h3>
           <div class="goals">
             {#each GOALS as g (g.id)}
-              <button class:active={profile.goal === g.id} onclick={() => (profile!.goal = g.id)}>{g.name}</button>
+              <button class={['btn btn-sm', profile.goal === g.id && 'btn-primary btn-soft']} onclick={() => (profile!.goal = g.id)}>{g.name}</button>
             {/each}
           </div>
           <p class="help">{GOALS.find((g) => g.id === profile!.goal)?.hint}</p>
           {#if profile.goal === 'character'}
-            <label class="stack">
+            <label class="stacked">
               <span>这个角色固有的特征</span>
-              <input type="text" class="mono" placeholder="silver hair, red eyes, cat ears" bind:value={fixedTraits} />
+              <input type="text" class="input input-sm mono" placeholder="silver hair, red eyes, cat ears" bind:value={fixedTraits} />
             </label>
           {:else if profile.goal === 'concept'}
-            <label class="stack">
+            <label class="stacked">
               <span>要学的概念是什么</span>
-              <input type="text" placeholder="例如：一件特定的红色旗袍" bind:value={profile.concept} />
+              <input class="input input-sm" type="text" placeholder="例如：一件特定的红色旗袍" bind:value={profile.concept} />
             </label>
           {/if}
         </section>
 
         <section>
           <h3>标注怎么写</h3>
-          <select bind:value={profile.format}>
+          <select class="select select-sm" bind:value={profile.format}>
             <option value="danbooru">Danbooru 标签（二次元底模用这个）</option>
             <option value="natural">自然语言描述</option>
             <option value="mixed">标签加一句描述</option>
           </select>
           {#if profile.format !== 'natural'}
-            <label class="stack">
+            <label class="stacked">
               <span>优先使用这些标签</span>
-              <textarea rows="2" placeholder="用逗号分隔" bind:value={preferred}></textarea>
+              <textarea class="textarea" rows="2" placeholder="用逗号分隔" bind:value={preferred}></textarea>
             </label>
-            <label class="check"><input type="checkbox" bind:checked={profile.preferred_only} /><span>只允许使用上面这些标签</span></label>
-            <label class="stack">
+            <label class="check"><input class="checkbox checkbox-sm" type="checkbox" bind:checked={profile.preferred_only} /><span>只允许使用上面这些标签</span></label>
+            <label class="stacked">
               <span>不要出现的标签</span>
-              <input type="text" class="mono" placeholder="用逗号分隔" bind:value={banned} />
+              <input type="text" class="input input-sm mono" placeholder="用逗号分隔" bind:value={banned} />
             </label>
             {#if profile.format === 'danbooru' && tagging.dictionary_size === 0}
               <p class="help">
@@ -230,9 +231,9 @@
               </p>
             {/if}
           {/if}
-          <label class="stack">
+          <label class="stacked">
             <span>其他要求</span>
-            <textarea rows="2" placeholder="例如：服装细节写详细一些" bind:value={profile.extra_instructions}></textarea>
+            <textarea class="textarea" rows="2" placeholder="例如：服装细节写详细一些" bind:value={profile.extra_instructions}></textarea>
           </label>
           <details>
             <summary>查看发给模型的完整指令</summary>
@@ -245,15 +246,15 @@
           {#if tagging.job?.running}
             <div class="row">
               <span class="num">正在标注 {tagging.job.done} / {tagging.job.total}</span>
-              <button onclick={() => taggingApi.cancel(project.id)}>停止</button>
+              <button class="btn btn-sm" onclick={() => taggingApi.cancel(project.id)}>停止</button>
             </div>
           {:else}
             <p class="help">对象：{target.label}。建议先试几张，看结果满意再全部标注。</p>
             <div class="row">
-              <button disabled={!tagging.configured || !target.ids.length} onclick={() => start(target.ids.slice(0, 3))}>
+              <button class="btn btn-sm" disabled={!tagging.configured || !target.ids.length} onclick={() => start(target.ids.slice(0, 3))}>
                 先试 {Math.min(3, target.ids.length)} 张
               </button>
-              <button class="primary" disabled={!tagging.configured || !target.ids.length} onclick={() => start(target.ids)}>
+              <button class="btn btn-sm btn-primary" disabled={!tagging.configured || !target.ids.length} onclick={() => start(target.ids)}>
                 标注{target.label}
               </button>
             </div>
@@ -274,10 +275,10 @@
             <span>{tagging.suggestions.length} 条建议待确认</span>
             <span class="legend"><span class="tag new">新增</span><span class="tag">已有</span><span class="tag warn">词典里没有</span></span>
             <span class="spacer"></span>
-            <button onclick={() => discard(tagging!.suggestions)}>全部丢弃</button>
-            <button class="primary" onclick={() => accept(tagging!.suggestions)}>全部采用</button>
+            <button class="btn btn-sm" onclick={() => discard(tagging!.suggestions)}>全部丢弃</button>
+            <button class="btn btn-sm btn-primary" onclick={() => accept(tagging!.suggestions)}>全部采用</button>
           </div>
-          <div class="list">
+          <div class="suggestions">
             {#each tagging.suggestions as s (s.image_id)}
               {@const d = diff(s)}
               <article>
@@ -311,8 +312,8 @@
                   {/if}
                 </div>
                 <div class="decide">
-                  <button class="primary" onclick={() => accept([s])}>采用</button>
-                  <button onclick={() => discard([s])}>丢弃</button>
+                  <button class="btn btn-sm btn-primary" onclick={() => accept([s])}>采用</button>
+                  <button class="btn btn-sm" onclick={() => discard([s])}>丢弃</button>
                 </div>
               </article>
             {/each}
@@ -338,18 +339,18 @@
   }
   header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-3) var(--space-5);
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     flex: none;
   }
   h2 {
-    font-size: var(--text-lg);
+    font-size: var(--text-xl);
   }
   h3 {
-    font-size: var(--text-md);
+    font-size: 15px;
   }
   .spacer {
     flex: 1;
@@ -366,7 +367,7 @@
     min-height: 0;
   }
   .form {
-    overflow-y: auto;
+    overflow: hidden auto;
     padding: var(--space-4);
     background: var(--surface);
     border-right: 1px solid var(--border);
@@ -403,7 +404,7 @@
   label > span {
     color: var(--text-2);
   }
-  label.stack {
+  label.stacked {
     grid-template-columns: 1fr;
     gap: var(--space-1);
   }
@@ -424,14 +425,8 @@
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-1);
   }
-  .goals button {
-    padding: 0;
-  }
-  .goals button.active {
-    border-color: var(--accent);
-    background: var(--accent-bg);
-    color: var(--accent);
-    font-weight: 600;
+  .goals :global(.btn) {
+    padding-inline: 0;
   }
   details summary {
     cursor: pointer;
@@ -441,20 +436,12 @@
   pre {
     margin: var(--space-2) 0 0;
     padding: var(--space-2);
-    background: var(--surface-2);
+    background: var(--bg);
     border-radius: var(--radius);
     font: var(--text-xs) / 1.5 var(--font-mono);
     white-space: pre-wrap;
     max-height: 260px;
     overflow-y: auto;
-  }
-  .link {
-    height: auto;
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--accent);
-    text-decoration: underline;
   }
   .error {
     margin: 0;
@@ -488,7 +475,7 @@
     overflow-wrap: anywhere;
     flex: none;
   }
-  .list {
+  .suggestions {
     overflow-y: auto;
     flex: 1;
   }
@@ -501,10 +488,10 @@
   }
   article img {
     width: 96px;
-    height: 96px;
-    object-fit: contain;
-    background: var(--surface-2);
-    border-radius: 3px;
+    height: 128px;
+    object-fit: cover;
+    object-position: center 20%;
+    border-radius: 6px;
   }
   .body {
     display: flex;
@@ -519,11 +506,11 @@
   .tag {
     display: inline-flex;
     align-items: center;
-    height: 22px;
-    padding: 0 7px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    height: 26px;
+    padding: 0 9px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: var(--surface-2);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--text-2);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Play, Plus, X } from '@lucide/svelte'
   import {
     api,
     formatDuration,
@@ -191,7 +192,7 @@
     {#if images.length === 0}
       <div class="notice">
         <p>数据集里还没有图片，先导入要学习的图片。</p>
-        <button class="primary" onclick={ongotodataset}>去数据集</button>
+        <button class="btn btn-sm btn-primary" onclick={ongotodataset}>去数据集</button>
       </div>
     {/if}
 
@@ -199,7 +200,7 @@
       <h2>在哪个底模上训练</h2>
       <p class="help">选你平时出图用的那个底模，或者它所属系列的基础模型。LoRA 在同系列的模型上通用。</p>
       {#if models.length}
-        <select value={settings.base_model} onchange={(e) => pickModel(e.currentTarget.value)}>
+        <select class="select select-sm" value={settings.base_model} onchange={(e) => pickModel(e.currentTarget.value)}>
           {#each models as model (model.path)}
             <option value={model.path}>{model.name}（{model.size_gb} GB）</option>
           {/each}
@@ -209,9 +210,9 @@
         {/if}
       {:else if modelsLoaded}
         <p class="help">还不知道你的底模放在哪里。填入存放 SDXL 底模的文件夹：</p>
-        <div class="inline">
-          <input type="text" class="mono grow" placeholder="D:\ComfyUI\models\checkpoints" bind:value={modelDir} />
-          <button disabled={!modelDir.trim()} onclick={addModelDir}>使用这个文件夹</button>
+        <div class="line">
+          <input type="text" class="input input-sm mono wide" placeholder="D:\ComfyUI\models\checkpoints" bind:value={modelDir} />
+          <button class="btn btn-sm" disabled={!modelDir.trim()} onclick={addModelDir}>使用这个文件夹</button>
         </div>
       {/if}
     </section>
@@ -221,8 +222,8 @@
       <p class="help">
         每一轮把所有图片学 {settings.repeats} 遍。轮数太少学不像，太多会学过头（画面僵硬、只会复刻原图）。每一轮都会保存并出预览图，训练完可以挑最好的那一轮。
       </p>
-      <div class="inline">
-        <input type="number" class="short" min="1" max="200" bind:value={settings.epochs} />
+      <div class="line">
+        <input type="number" class="input input-sm short" min="1" max="200" bind:value={settings.epochs} />
         <span>轮</span>
         <span class="muted num">
           共 {steps} 步{#if secondsPerStep}，约 {formatDuration(steps * secondsPerStep)}（按上次的速度估算，不含出图）{/if}
@@ -250,14 +251,14 @@
       <h2>训练中的预览图</h2>
       <p class="help">每一轮结束后，用这些提示词各出一张图。种子固定，所以可以逐轮对比变化。写你最想检验的场景。</p>
       {#each settings.sample_prompts as prompt, index (index)}
-        <div class="inline top">
-          <textarea class="grow" rows="2" bind:value={prompt.prompt}></textarea>
-          <button class="ghost" title="删除这条" onclick={() => settings.sample_prompts.splice(index, 1)}>×</button>
+        <div class="line top">
+          <textarea class="textarea wide" rows="2" bind:value={prompt.prompt}></textarea>
+          <button class="btn btn-sm btn-ghost btn-square" title="删除这条" onclick={() => settings.sample_prompts.splice(index, 1)}><X /></button>
         </div>
       {/each}
-      <div class="inline">
-        <button onclick={addPrompt}>加一条提示词</button>
-        <select value={size} onchange={(e) => setSize(Number(e.currentTarget.value))}>
+      <div class="line">
+        <button class="btn btn-sm" onclick={addPrompt}><Plus />加一条提示词</button>
+        <select class="select select-sm" value={size} onchange={(e) => setSize(Number(e.currentTarget.value))}>
           {#each SIZES as s, i (s.label)}<option value={i}>{s.label}</option>{/each}
         </select>
       </div>
@@ -265,18 +266,18 @@
 
     <details>
       <summary>更多设置</summary>
-      <div class="grid">
-        <label><span>学习率</span><input type="number" step="0.00001" bind:value={settings.unet_lr} /></label>
+      <div class="fields">
+        <label><span>学习率</span><input class="input input-sm" type="number" step="0.00001" bind:value={settings.unet_lr} /></label>
         <label>
           <span>优化器</span>
-          <select bind:value={settings.optimizer}>
+          <select class="select select-sm" bind:value={settings.optimizer}>
             <option value="adamw">AdamW</option>
             <option value="prodigy">Prodigy（自动调学习率）</option>
           </select>
         </label>
         <label>
           <span>学习率变化</span>
-          <select bind:value={settings.lr_scheduler}>
+          <select class="select select-sm" bind:value={settings.lr_scheduler}>
             <option value="cosine">逐渐降低（cosine）</option>
             <option value="constant">保持不变</option>
             <option value="constant_with_warmup">预热后不变</option>
@@ -284,21 +285,21 @@
             <option value="linear">线性降低</option>
           </select>
         </label>
-        <label><span>预热步数</span><input type="number" min="0" bind:value={settings.lr_warmup_steps} /></label>
-        <label><span>Rank</span><input type="number" min="1" max="256" bind:value={settings.network_dim} /></label>
-        <label><span>Alpha</span><input type="number" min="0" step="0.5" bind:value={settings.network_alpha} /></label>
-        <label><span>每步图片数</span><input type="number" min="1" max="8" bind:value={settings.batch_size} /></label>
-        <label><span>每轮重复次数</span><input type="number" min="1" max="100" bind:value={settings.repeats} /></label>
+        <label><span>预热步数</span><input class="input input-sm" type="number" min="0" bind:value={settings.lr_warmup_steps} /></label>
+        <label><span>Rank</span><input class="input input-sm" type="number" min="1" max="256" bind:value={settings.network_dim} /></label>
+        <label><span>Alpha</span><input class="input input-sm" type="number" min="0" step="0.5" bind:value={settings.network_alpha} /></label>
+        <label><span>每步图片数</span><input class="input input-sm" type="number" min="1" max="8" bind:value={settings.batch_size} /></label>
+        <label><span>每轮重复次数</span><input class="input input-sm" type="number" min="1" max="100" bind:value={settings.repeats} /></label>
         <label>
           <span>训练分辨率</span>
-          <select bind:value={settings.resolution}>
+          <select class="select select-sm" bind:value={settings.resolution}>
             <option value={768}>768</option>
             <option value={1024}>1024</option>
           </select>
         </label>
         <label>
           <span>Min-SNR gamma</span>
-          <input
+          <input class="input input-sm"
             type="number"
             min="0"
             placeholder="关闭"
@@ -308,7 +309,7 @@
         </label>
         <label>
           <span>Noise offset</span>
-          <input
+          <input class="input input-sm"
             type="number"
             min="0"
             step="0.01"
@@ -317,32 +318,32 @@
             onchange={(e) => (settings.noise_offset = nullable(e.currentTarget.value))}
           />
         </label>
-        <label><span>随机种子</span><input type="number" bind:value={settings.seed} /></label>
+        <label><span>随机种子</span><input class="input input-sm" type="number" bind:value={settings.seed} /></label>
         <label>
           <span>固定前几个标签</span>
-          <input type="number" min="0" bind:value={settings.keep_tokens} />
+          <input class="input input-sm" type="number" min="0" bind:value={settings.keep_tokens} />
         </label>
         <label>
           <span>整条标注丢弃率</span>
-          <input type="number" min="0" max="1" step="0.05" bind:value={settings.caption_dropout_rate} />
+          <input class="input input-sm" type="number" min="0" max="1" step="0.05" bind:value={settings.caption_dropout_rate} />
         </label>
         <label>
           <span>计算精度</span>
-          <select bind:value={settings.mixed_precision}>
+          <select class="select select-sm" bind:value={settings.mixed_precision}>
             <option value="fp16">fp16（推荐）</option>
             <option value="bf16">bf16</option>
             <option value="no">全精度（慢，占显存）</option>
           </select>
         </label>
-        <label><span>输出文件名</span><input type="text" bind:value={settings.output_name} /></label>
-        <label class="check"><input type="checkbox" bind:checked={settings.shuffle_caption} /><span>每步打乱标签顺序（标注是完整句子时不要开）</span></label>
+        <label><span>输出文件名</span><input class="input input-sm" type="text" bind:value={settings.output_name} /></label>
+        <label class="check"><input class="checkbox checkbox-sm" type="checkbox" bind:checked={settings.shuffle_caption} /><span>每步打乱标签顺序（标注是完整句子时不要开）</span></label>
         <label class="check">
-          <input type="checkbox" bind:checked={settings.train_text_encoder} /><span>同时训练文本编码器</span>
+          <input class="checkbox checkbox-sm" type="checkbox" bind:checked={settings.train_text_encoder} /><span>同时训练文本编码器</span>
         </label>
         {#if settings.train_text_encoder}
           <label>
             <span>文本编码器学习率</span>
-            <input type="number" step="0.00001" bind:value={settings.text_encoder_lr} />
+            <input class="input input-sm" type="number" step="0.00001" bind:value={settings.text_encoder_lr} />
           </label>
         {/if}
       </div>
@@ -363,14 +364,14 @@
     </dl>
 
     {#if uncaptioned > 0}
-      <p class="warn">有 {uncaptioned} 张图片没有标注，它们会被当作"无提示词"来学。<button class="link" onclick={ongotodataset}>去处理</button></p>
+      <p class="warn">有 {uncaptioned} 张图片没有标注，它们会被当作"无提示词"来学。<button class="link link-primary" onclick={ongotodataset}>去处理</button></p>
     {/if}
     {#if project.kind !== 'style' && !project.trigger}
       <p class="warn">这个项目没有设置触发词，训练出的内容只能靠其他标签带出来。</p>
     {:else if project.trigger && images.length > 0 && withTrigger < images.length}
       <p class="warn">
         触发词 <code>{project.trigger}</code> 只出现在 {withTrigger} / {images.length} 张图片的标注里。
-        <button class="link" onclick={addTriggerToAll}>加到所有图片最前面</button>
+        <button class="link link-primary" onclick={addTriggerToAll}>加到所有图片最前面</button>
       </p>
     {/if}
     {#if lastRun}
@@ -378,8 +379,8 @@
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
 
-    <button class="primary start" disabled={starting || !settings.base_model || images.length === 0} onclick={start}>
-      开始训练
+    <button class="btn btn-primary btn-lg start" disabled={starting || !settings.base_model || images.length === 0} onclick={start}>
+      <Play />开始训练
     </button>
   </aside>
 </div>
@@ -415,15 +416,15 @@
     color: var(--text-2);
     line-height: 1.6;
   }
-  .inline {
+  .line {
     display: flex;
     align-items: center;
     gap: var(--space-2);
   }
-  .inline.top {
+  .line.top {
     align-items: flex-start;
   }
-  .grow {
+  .wide {
     flex: 1;
   }
   .mono {
@@ -431,19 +432,13 @@
     font-size: var(--text-sm);
   }
   .short {
-    width: 72px;
+    width: 88px;
   }
-  input[type='number'] {
-    height: var(--row-height);
-    padding: 0 var(--space-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    min-width: 0;
+  .line .select {
+    width: auto;
   }
   section > select {
-    align-self: flex-start;
-    min-width: 320px;
+    max-width: 420px;
   }
 
   .choices {
@@ -452,8 +447,11 @@
     gap: var(--space-2);
   }
   .choice {
-    height: auto;
-    padding: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+    transition: border-color 0.12s;
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
@@ -466,10 +464,20 @@
     font-size: var(--text-sm);
     line-height: 1.5;
   }
+  .choice strong {
+    font-family: var(--font-display);
+    font-size: 15px;
+  }
+  .choice:hover {
+    border-color: var(--text-3);
+  }
   .choice.active {
     border-color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--accent);
     background: var(--accent-bg);
+  }
+  .choice.active strong {
+    color: var(--accent);
   }
 
   details summary {
@@ -477,22 +485,22 @@
     color: var(--text-2);
     width: fit-content;
   }
-  .grid {
+  .fields {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-2) var(--space-5);
     margin-top: var(--space-3);
   }
-  .grid label {
+  .fields label {
     display: grid;
     grid-template-columns: 1fr 150px;
     align-items: center;
     gap: var(--space-2);
   }
-  .grid label span {
+  .fields label span {
     color: var(--text-2);
   }
-  .grid label.check {
+  .fields label.check {
     grid-template-columns: auto 1fr;
   }
 
@@ -502,9 +510,8 @@
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
+    border-radius: var(--radius-lg);
+    background: var(--accent-bg);
   }
   .notice p {
     margin: 0;
@@ -515,7 +522,7 @@
     flex-direction: column;
     gap: var(--space-3);
     padding: var(--space-5) var(--space-4);
-    background: var(--surface);
+    background: var(--bg);
     border-left: 1px solid var(--border);
     overflow-y: auto;
   }
@@ -549,19 +556,7 @@
   .small {
     font-size: var(--text-sm);
   }
-  .link {
-    height: auto;
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--accent);
-    text-decoration: underline;
-  }
-  .link:hover:not(:disabled) {
-    background: none;
-  }
   .start {
-    height: 36px;
     margin-top: var(--space-2);
   }
 </style>

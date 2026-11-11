@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { X } from '@lucide/svelte'
   // A list of tag chips. With `onchange` it is a full editor (add, remove); with only
   // `onremove` it shows removable chips, used for the batch view of a multi-selection.
   let {
@@ -48,14 +49,14 @@
   {#each tags as tag (tag)}
     <span class="chip">
       {tag}
-      <button class="x" title="移除" onclick={() => remove(tag)}>×</button>
+      <button class="x" title="移除" onclick={() => remove(tag)}><X /></button>
     </span>
   {:else}
     {#if readonlyOrder}<span class="none">无</span>{/if}
   {/each}
 
   {#if onchange}
-    <input type="text" placeholder="添加标签，回车确认" list={listId} bind:value={draft} onkeydown={onKeydown} onblur={add} />
+    <input class="add" type="text" placeholder="添加标签，回车确认" list={listId} bind:value={draft} onkeydown={onKeydown} onblur={add} />
     <datalist id={listId}>
       {#each suggestions.filter((s) => !tags.includes(s)).slice(0, 200) as suggestion (suggestion)}
         <option value={suggestion}></option>
@@ -68,44 +69,52 @@
   .chips {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-1);
+    gap: 6px;
   }
   .chip {
     display: inline-flex;
     align-items: center;
-    height: 22px;
-    padding-left: 7px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    height: 26px;
+    padding-left: 9px;
+    border-radius: 6px;
     background: var(--surface-2);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
   }
   .faded .chip {
     background: none;
-    border-style: dashed;
+    outline: 1px dashed var(--border-strong);
+    outline-offset: -1px;
     color: var(--text-2);
   }
   .x {
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    border: none;
-    background: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 26px;
     color: var(--text-3);
-    font-size: 14px;
-    line-height: 1;
   }
-  .x:hover:not(:disabled) {
-    background: none;
+  .x :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+  .x:hover {
     color: var(--danger);
   }
-  input {
+  .add {
     flex: 1;
-    min-width: 140px;
-    height: 22px;
+    min-width: 150px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 6px;
+    background: none;
+    outline: 1px dashed var(--border-strong);
+    outline-offset: -1px;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
+  }
+  .add:focus {
+    outline: 1.5px solid var(--accent);
   }
   .none {
     color: var(--text-3);

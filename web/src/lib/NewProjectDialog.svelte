@@ -47,19 +47,20 @@
   }
 </script>
 
-<dialog bind:this={dialog} {onclose}>
+<dialog class="modal" bind:this={dialog} {onclose}>
+  <div class="modal-box">
   <form onsubmit={submit}>
     <h2>{project ? '项目设置' : '新建项目'}</h2>
 
     <label>
       <span>名称</span>
       <!-- svelte-ignore a11y_autofocus -->
-      <input type="text" bind:value={name} required autofocus />
+      <input class="input input-sm" type="text" bind:value={name} required autofocus />
     </label>
 
     <label>
       <span>要学什么</span>
-      <select bind:value={kind}>
+      <select class="select select-sm" bind:value={kind}>
         <option value="character">一个角色</option>
         <option value="style">一种画风</option>
         <option value="concept">一个概念（服装、姿势等）</option>
@@ -68,30 +69,32 @@
 
     <label>
       <span>触发词</span>
-      <input type="text" bind:value={trigger} placeholder="出图时用来调用这个 LoRA 的词" />
+      <input class="input input-sm" type="text" bind:value={trigger} placeholder="出图时用来调用这个 LoRA 的词" />
     </label>
     <p class="help">触发词最好是一个不存在的词（比如 mychar01），避免和底模已经认识的概念混在一起。</p>
 
     {#if error}<p class="error">{error}</p>{/if}
 
     <div class="actions">
-      {#if project}<button type="button" class="danger" onclick={remove}>删除项目</button>{/if}
+      {#if project}<button type="button" class="btn btn-sm btn-ghost text-error" onclick={remove}>删除项目</button>{/if}
       <span class="spacer"></span>
-      <button type="button" onclick={onclose}>取消</button>
-      <button class="primary" disabled={!name.trim()}>{project ? '保存' : '创建'}</button>
+      <button class="btn btn-sm" type="button" onclick={onclose}>取消</button>
+      <button class="btn btn-sm btn-primary" disabled={!name.trim()}>{project ? '保存' : '创建'}</button>
     </div>
   </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>关闭</button></form>
 </dialog>
 
 <style>
-  form {
+  .modal-box form {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
   }
   h2 {
-    font-size: var(--text-lg);
-    margin-bottom: var(--space-1);
+    font-size: var(--text-xl);
+    margin-bottom: var(--space-2);
   }
   label {
     display: grid;

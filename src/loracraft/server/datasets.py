@@ -61,6 +61,9 @@ def list_projects(conn: sqlite3.Connection = Depends(db.get_db)):
         """SELECT p.*,
                   (SELECT COUNT(*) FROM images i WHERE i.project_id = p.id) AS image_count,
                   (SELECT COUNT(*) FROM runs r WHERE r.project_id = p.id) AS run_count,
+                  (SELECT COUNT(*) FROM images i WHERE i.project_id = p.id AND i.caption = '') AS uncaptioned_count,
+                  (SELECT COUNT(*) FROM runs r WHERE r.project_id = p.id AND r.status IN ('queued', 'running'))
+                      AS active_runs,
                   (SELECT id FROM images i WHERE i.project_id = p.id ORDER BY id LIMIT 1) AS cover_image_id
            FROM projects p ORDER BY p.id DESC"""
     ).fetchall()

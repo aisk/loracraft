@@ -7,6 +7,8 @@ export interface Project {
   created_at: string
   image_count?: number
   run_count?: number
+  uncaptioned_count?: number
+  active_runs?: number
   cover_image_id?: number | null
 }
 
