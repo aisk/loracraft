@@ -1,5 +1,6 @@
 """FastAPI application: the JSON API under /api plus the built web UI."""
 
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -10,7 +11,8 @@ from fastapi.staticfiles import StaticFiles
 
 from . import datasets, db, runs, system, tagging
 
-WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
+# Built by `npm run build` in web/ and shipped inside the package.
+WEB_DIST = Path(__file__).resolve().parents[1] / "web_dist"
 LOCAL_HOSTS = {"127.0.0.1", "localhost"}
 
 
@@ -58,6 +60,15 @@ if WEB_DIST.is_dir():
 
 
 def main() -> None:
+    import argparse
+
     import uvicorn
 
-    uvicorn.run("loracraft.server.app:app", host="127.0.0.1", port=8600)
+    parser = argparse.ArgumentParser(prog="loracraft", description="LoRA training workbench")
+    parser.add_argument("--port", type=int, default=8600, help="port to listen on (default: %(default)s)")
+    args = parser.parse_args()
+
+    if not WEB_DIST.is_dir():
+        print(f"The web UI is not built ({WEB_DIST} is missing): only the API will be served.", file=sys.stderr)
+    print(f"Data directory: {db.workspace()}")
+    uvicorn.run("loracraft.server.app:app", host="127.0.0.1", port=args.port)

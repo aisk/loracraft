@@ -25,36 +25,65 @@ web/             Svelte frontend
 tests/
 ```
 
-## Setup
+## Install
+
+Requires Python 3.12. Training needs a GPU that PyTorch drives through CUDA or ROCm; the dataset
+and captioning tools work without one.
+
+Install PyTorch **first**, from the index that matches your GPU, then LoraCraft. Which index that is
+(CUDA version, ROCm, …) is listed at [pytorch.org](https://pytorch.org/get-started/locally/):
+
+```sh
+python -m venv .venv                 # then activate it
+pip install torch --index-url <index for your GPU>
+pip install loracraft
+```
+
+The order matters. LoraCraft accepts any PyTorch build, so the one you installed is kept; without
+one, `pip install loracraft` brings the default build from PyPI, which on Windows cannot use the
+GPU. If that happened, repeat the `pip install torch …` line with `--force-reinstall`. The training
+page tells you when the installed PyTorch cannot train.
+
+## Run
+
+```sh
+loracraft                            # http://127.0.0.1:8600
+python -m loracraft --port 8700      # the same, on another port
+```
+
+User data (database, images, runs) lives in the per-user data directory, printed at startup:
+`%LOCALAPPDATA%\loracraft` on Windows, `~/Library/Application Support/loracraft` on macOS,
+`~/.local/share/loracraft` on Linux. Set `LORACRAFT_HOME` to keep it elsewhere.
+
+## Development
 
 Requires [uv](https://docs.astral.sh/uv/) and Node.js.
 
 ```sh
 uv sync                              # Python environment, including PyTorch
 cd web && npm install && npm run build
+uv run loracraft
 ```
 
-`pyproject.toml` currently pins PyTorch to the AMD ROCm build for Windows and RDNA2 cards
-(`device-gfx1030`). For another AMD card, change the `device-gfx…` names; other GPU vendors are not
-wired up yet.
+`uv sync` installs the `torch-rocm` dependency group, which pins PyTorch to the AMD ROCm build for
+Windows and RDNA2 cards (`device-gfx1030`). For another AMD card, change the `device-gfx…` names;
+for another vendor, replace the group.
 
-## Run
+`npm run build` writes the web UI into `src/loracraft/web_dist/`, from where the server serves it.
+For frontend work, run `npm run dev` in `web/` alongside the server and open http://localhost:5600.
+
+To build the distributions (the web UI must be built first):
 
 ```sh
-uv run loracraft                     # http://127.0.0.1:8600
+uv build
 ```
-
-User data (database, images, runs) lives in `./workspace`; set `LORACRAFT_HOME` to move it.
-
-For frontend development, run `npm run dev` in `web/` alongside the server and open
-http://localhost:5600.
 
 ## Training worker
 
 A run is a directory containing `config.json` (see `trainer/config.py`):
 
 ```sh
-uv run python -m loracraft.trainer <run_dir>
+python -m loracraft.trainer <run_dir>
 ```
 
 It writes `events.jsonl`, `checkpoints/` and `samples/` into the same directory. Create a file

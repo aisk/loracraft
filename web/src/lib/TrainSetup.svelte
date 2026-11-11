@@ -9,6 +9,7 @@
     type DatasetImage,
     type Project,
     type Run,
+    type TrainerStatus,
     type TrainSettings,
   } from './api'
 
@@ -103,6 +104,7 @@
   let settings = $state(initialSettings())
   let models = $state<BaseModel[]>([])
   let modelsLoaded = $state(false)
+  let trainer = $state<TrainerStatus | null>(null)
   let modelDir = $state('')
   let error = $state('')
   let starting = $state(false)
@@ -114,6 +116,10 @@
     if (!models.some((m) => m.path === settings.base_model)) pickModel(models[0]?.path ?? '')
   }
   loadModels().catch((e) => (error = String(e)))
+  runApi
+    .trainer()
+    .then((status) => (trainer = status))
+    .catch((e) => (error = String(e)))
 
   function pickModel(path: string) {
     settings.base_model = path
@@ -193,6 +199,25 @@
       <div class="notice">
         <p>数据集里还没有图片，先导入要学习的图片。</p>
         <button class="btn btn-sm btn-primary" onclick={ongotodataset}>去数据集</button>
+      </div>
+    {/if}
+
+    {#if trainer && !trainer.ready}
+      <div class="notice column">
+        {#if trainer.problem === 'missing'}
+          <p>还没有安装 PyTorch，训练需要它。它的版本取决于你的显卡，所以没有随 LoraCraft 一起安装。</p>
+        {:else if trainer.problem === 'no_gpu'}
+          <p>已安装的 PyTorch {trainer.torch_version} 用不了显卡（多半是默认的 CPU 版），训练需要支持显卡的版本。</p>
+        {:else}
+          <p>已安装的 PyTorch 无法加载，需要重新安装。</p>
+        {/if}
+        <p class="help">
+          在 <a class="link" href="https://pytorch.org/get-started/locally/" target="_blank" rel="noreferrer">pytorch.org</a>
+          找到适合你显卡的安装源，装进运行 LoraCraft 的这个 Python 环境，然后重启 LoraCraft：
+        </p>
+        <code class="mono command">
+          "{trainer.python}" -m pip install torch --index-url &lt;安装源&gt;{trainer.problem === 'missing' ? '' : ' --force-reinstall'}
+        </code>
       </div>
     {/if}
 
@@ -379,7 +404,7 @@
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
 
-    <button class="btn btn-primary btn-lg start" disabled={starting || !settings.base_model || images.length === 0} onclick={start}>
+    <button class="btn btn-primary btn-lg start" disabled={starting || !settings.base_model || images.length === 0 || trainer?.ready === false} onclick={start}>
       <Play />开始训练
     </button>
   </aside>
@@ -515,6 +540,15 @@
   }
   .notice p {
     margin: 0;
+  }
+  .notice.column {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .command {
+    overflow-wrap: anywhere;
+    user-select: all;
   }
 
   aside {

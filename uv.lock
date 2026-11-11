@@ -343,10 +343,9 @@ wheels = [
 name = "loracraft"
 version = "0.1.0"
 source = { editable = "." }
+default-groups = ["dev", "torch-rocm"]
 dependencies = [
     { name = "accelerate" },
-    { name = "amd-torch-device-gfx1030" },
-    { name = "amd-torchvision-device-gfx1030" },
     { name = "diffusers" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -355,14 +354,8 @@ dependencies = [
     { name = "prodigyopt" },
     { name = "pydantic" },
     { name = "python-multipart" },
-    { name = "rocm", extra = ["libraries"] },
-    { name = "rocm-bootstrap" },
-    { name = "rocm-sdk-core" },
-    { name = "rocm-sdk-device-gfx1030" },
-    { name = "rocm-sdk-libraries" },
     { name = "safetensors" },
-    { name = "torch", extra = ["device-gfx1030"] },
-    { name = "torchvision", extra = ["device-gfx1030"] },
+    { name = "torch" },
     { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -372,12 +365,21 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+torch-rocm = [
+    { name = "amd-torch-device-gfx1030" },
+    { name = "amd-torchvision-device-gfx1030" },
+    { name = "rocm", extra = ["libraries"] },
+    { name = "rocm-bootstrap" },
+    { name = "rocm-sdk-core" },
+    { name = "rocm-sdk-device-gfx1030" },
+    { name = "rocm-sdk-libraries" },
+    { name = "torch", extra = ["device-gfx1030"] },
+    { name = "torchvision", extra = ["device-gfx1030"] },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=1.10" },
-    { name = "amd-torch-device-gfx1030", specifier = "==2.13.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
-    { name = "amd-torchvision-device-gfx1030", specifier = "==0.28.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
     { name = "diffusers", specifier = ">=0.35" },
     { name = "fastapi", specifier = ">=0.118" },
     { name = "httpx", specifier = ">=0.28" },
@@ -386,14 +388,8 @@ requires-dist = [
     { name = "prodigyopt", specifier = ">=1.1.2" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "python-multipart", specifier = ">=0.0.33" },
-    { name = "rocm", extras = ["libraries"], specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
-    { name = "rocm-bootstrap", index = "https://stable.repo.amd.com/rocm/whl-next/" },
-    { name = "rocm-sdk-core", specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
-    { name = "rocm-sdk-device-gfx1030", specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
-    { name = "rocm-sdk-libraries", specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
     { name = "safetensors", specifier = ">=0.6" },
-    { name = "torch", extras = ["device-gfx1030"], specifier = "==2.13.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
-    { name = "torchvision", extras = ["device-gfx1030"], specifier = "==0.28.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "torch", specifier = ">=2.4", index = "https://stable.repo.amd.com/rocm/whl-next/" },
     { name = "transformers", specifier = ">=5.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.37" },
 ]
@@ -402,6 +398,17 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.13" },
+]
+torch-rocm = [
+    { name = "amd-torch-device-gfx1030", specifier = "==2.13.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "amd-torchvision-device-gfx1030", specifier = "==0.28.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "rocm", extras = ["libraries"], specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "rocm-bootstrap", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "rocm-sdk-core", specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "rocm-sdk-device-gfx1030", specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "rocm-sdk-libraries", specifier = "==10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "torch", extras = ["device-gfx1030"], specifier = "==2.13.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
+    { name = "torchvision", extras = ["device-gfx1030"], specifier = "==0.28.0+rocm10.1.0", index = "https://stable.repo.amd.com/rocm/whl-next/" },
 ]
 
 [[package]]

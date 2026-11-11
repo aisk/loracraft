@@ -155,6 +155,14 @@ export interface RunEvent {
   [key: string]: unknown
 }
 
+/** Whether the Python environment can train. `problem` says why not. */
+export interface TrainerStatus {
+  ready: boolean
+  problem: 'missing' | 'no_gpu' | 'broken' | null
+  torch_version: string
+  python: string
+}
+
 export interface BaseModel {
   path: string
   name: string
@@ -185,6 +193,7 @@ export const runApi = {
     request<{ path: string }>(`/runs/${runId}/export`, json('POST', { checkpoint })),
 
   models: () => request<{ models: BaseModel[]; missing_dirs: string[] }>('/models'),
+  trainer: () => request<TrainerStatus>('/trainer'),
   getSettings: () => request<Settings>('/settings'),
   putSettings: (settings: Settings) => request<Settings>('/settings', json('PUT', settings)),
 }

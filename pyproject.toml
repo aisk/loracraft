@@ -4,21 +4,23 @@ version = "0.1.0"
 description = "LoRA training workbench with dataset, run and result management"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE", "src/loracraft/vendor/kohya/LICENSE"]
+authors = [{ name = "An Long" }]
+keywords = ["lora", "sdxl", "stable-diffusion", "training", "dataset"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Environment :: GPU",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # GPU stack: AMD ROCm (TheRock) multi-arch wheels for an RDNA2 card (gfx1030).
-    "torch[device-gfx1030]==2.13.0+rocm10.1.0",
-    "torchvision[device-gfx1030]==0.28.0+rocm10.1.0",
-    # Runtime packages torch pulls in. They are listed here only so that
-    # [tool.uv.sources] can pin them to the AMD index; PyPI carries placeholder
-    # packages under the same names.
-    "rocm[libraries]==10.1.0",
-    "rocm-bootstrap",
-    "rocm-sdk-core==10.1.0",
-    "rocm-sdk-libraries==10.1.0",
-    "rocm-sdk-device-gfx1030==10.1.0",
-    "amd-torch-device-gfx1030==2.13.0+rocm10.1.0",
-    "amd-torchvision-device-gfx1030==0.28.0+rocm10.1.0",
+    # Any build: which one can use the GPU depends on the machine, so the user installs theirs
+    # first, from the index of their choice (see README), and this requirement is then already
+    # met. Otherwise the default PyPI build is installed, which on Windows is CPU-only.
+    "torch>=2.4",
     "diffusers>=0.35",
     "transformers>=5.0",
     "accelerate>=1.10",
@@ -33,11 +35,31 @@ dependencies = [
     "python-multipart>=0.0.33",
 ]
 
+[project.urls]
+Homepage = "https://github.com/aisk/loracraft"
+Issues = "https://github.com/aisk/loracraft/issues"
+
 [project.scripts]
 loracraft = "loracraft.server.app:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.13"]
+# The PyTorch build used for development: AMD ROCm (TheRock) multi-arch wheels for an RDNA2 card
+# (gfx1030) on Windows. Not part of the published package.
+torch-rocm = [
+    "torch[device-gfx1030]==2.13.0+rocm10.1.0",
+    "torchvision[device-gfx1030]==0.28.0+rocm10.1.0",
+    # Runtime packages torch pulls in. They are listed here only so that
+    # [tool.uv.sources] can pin them to the AMD index; PyPI carries placeholder
+    # packages under the same names.
+    "rocm[libraries]==10.1.0",
+    "rocm-bootstrap",
+    "rocm-sdk-core==10.1.0",
+    "rocm-sdk-libraries==10.1.0",
+    "rocm-sdk-device-gfx1030==10.1.0",
+    "amd-torch-device-gfx1030==2.13.0+rocm10.1.0",
+    "amd-torchvision-device-gfx1030==0.28.0+rocm10.1.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -46,7 +68,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/loracraft"]
 
+[tool.hatch.build]
+# The built web UI is git-ignored, so it has to be named to get into the distributions.
+artifacts = ["src/loracraft/web_dist/**"]
+
+# Refuses to build a distribution without the web UI (see hatch_build.py).
+[tool.hatch.build.hooks.custom]
+
 [tool.uv]
+default-groups = ["dev", "torch-rocm"]
 # The ROCm wheels below are only wired up for Windows so far.
 environments = ["sys_platform == 'win32'"]
 # The index metadata for torch lists the Linux-only triton build; drop it on Windows.

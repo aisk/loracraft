@@ -1,0 +1,31 @@
+name: Release
+
+# Publishing a GitHub release builds the distributions and uploads them to PyPI through
+# trusted publishing: no token is stored here. PyPI must list this repository, this workflow
+# file and the `pypi` environment as a trusted publisher of the project.
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build the web UI
+        working-directory: web
+        run: npm ci && npm run build
+      - uses: astral-sh/setup-uv@v6
+      - name: Check that the tag matches the package version
+        run: test "v$(uv version --short)" = "$GITHUB_REF_NAME"
+      - run: uv build
+      - run: uv publish

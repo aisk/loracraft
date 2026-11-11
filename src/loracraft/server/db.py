@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -67,9 +68,21 @@ CREATE TABLE IF NOT EXISTS settings (
 MIGRATIONS: list[str] = []
 
 
+def default_workspace() -> Path:
+    """The per-user data directory of this platform."""
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local"
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
+    return Path(base) / "loracraft"
+
+
 def workspace() -> Path:
     """Root directory for all user data: the database, images, runs."""
-    root = Path(os.environ.get("LORACRAFT_HOME", "workspace")).resolve()
+    home = os.environ.get("LORACRAFT_HOME")
+    root = Path(home).resolve() if home else default_workspace()
     root.mkdir(parents=True, exist_ok=True)
     return root
 

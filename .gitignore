@@ -2,7 +2,8 @@
 __pycache__/
 *.pyc
 node_modules/
-web/dist/
+src/loracraft/web_dist/
+dist/
 workspace/
 .ruff_cache/
 .pytest_cache/

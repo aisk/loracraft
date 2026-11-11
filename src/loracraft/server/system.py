@@ -1,8 +1,12 @@
 """Settings and base model discovery."""
 
+import functools
+import importlib.util
 import json
 import sqlite3
 import struct
+import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -43,6 +47,35 @@ def put_settings(body: Settings, conn: sqlite3.Connection = Depends(db.get_db)) 
         (body.model_dump_json(),),
     )
     return body
+
+
+@functools.cache
+def trainer_status() -> dict:
+    """Whether this Python environment can train: PyTorch must be installed and see a GPU.
+
+    Which PyTorch build is right depends on the GPU, so the user installs it; the usual mistake is
+    ending up with the CPU-only build. Asked of a child process, because importing torch is slow
+    and the server has no other use for it. Cached: a new installation needs a restart anyway.
+    """
+    status = {"ready": False, "problem": "missing", "torch_version": "", "python": sys.executable}
+    if importlib.util.find_spec("torch") is None:
+        return status
+    probe = "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+    try:
+        out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return status | {"problem": "broken"}
+    lines = out.stdout.split()
+    if out.returncode != 0 or len(lines) != 2:
+        return status | {"problem": "broken"}  # installed, but the import itself fails
+    if lines[1] != "True":
+        return status | {"problem": "no_gpu", "torch_version": lines[0]}
+    return status | {"ready": True, "problem": None, "torch_version": lines[0]}
+
+
+@router.get("/trainer")
+def get_trainer_status():
+    return trainer_status()
 
 
 def read_safetensors_header(path: Path) -> dict:

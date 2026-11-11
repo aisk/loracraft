@@ -12,6 +12,7 @@ from loracraft.server import db, runs, system
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("LORACRAFT_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(runs.queue, "start", lambda: None)  # no trainer processes in tests
+    monkeypatch.setattr(system, "trainer_status", lambda: {"ready": True})  # nor a GPU
     from loracraft.server.app import app
 
     with TestClient(app, base_url="http://127.0.0.1") as c:

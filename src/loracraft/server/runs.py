@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..trainer.config import TrainConfig, TrainImage
-from . import db
+from . import db, system
 from .datasets import image_path
 from .system import load_settings
 
@@ -297,6 +297,8 @@ def create_run(project_id: int, body: RunIn, conn: sqlite3.Connection = Depends(
     images = conn.execute("SELECT * FROM images WHERE project_id = ? ORDER BY id", (project_id,)).fetchall()
     if not images:
         raise HTTPException(400, "The dataset is empty")
+    if not system.trainer_status()["ready"]:
+        raise HTTPException(400, f"No PyTorch with GPU support in the Python environment of {sys.executable}")
 
     count = conn.execute("SELECT COUNT(*) FROM runs WHERE project_id = ?", (project_id,)).fetchone()[0]
     name = body.name.strip() or f"#{count + 1}"
