@@ -10,7 +10,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("LORACRAFT_HOME", str(tmp_path))
     from loracraft.server.app import app
 
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://127.0.0.1") as c:
         yield c
 
 
@@ -102,3 +102,10 @@ def test_static_route_cannot_leave_the_web_directory(client, tmp_path):
         response = client.get(path)
         assert "top secret" not in response.text
         assert "[project]" not in response.text
+
+
+def test_transparent_images_are_flattened_onto_white():
+    from loracraft.imaging import to_rgb
+
+    assert to_rgb(Image.new("RGBA", (2, 2), (0, 0, 0, 0))).getpixel((0, 0)) == (255, 255, 255)
+    assert to_rgb(Image.new("RGB", (2, 2), "red")).getpixel((0, 0)) == (255, 0, 0)

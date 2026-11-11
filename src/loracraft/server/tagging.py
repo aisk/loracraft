@@ -17,9 +17,10 @@ from functools import lru_cache
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from PIL import Image, ImageOps
+from PIL import Image
 from pydantic import BaseModel
 
+from ..imaging import to_rgb
 from . import db
 from .datasets import image_path, join_tags, split_tags
 from .system import load_settings
@@ -65,10 +66,17 @@ def check_against_dictionary(tag: str) -> tuple[str, dict | None]:
     known = dictionary()
     if not known or tag in known:
         return tag, None
-    close = difflib.get_close_matches(tag, known, n=1, cutoff=0.88)
+    close = _closest_known(tag, known)
     if close:
-        return close[0], {"tag": close[0], "kind": "corrected", "original": tag}
+        return close, {"tag": close, "kind": "corrected", "original": tag}
     return tag, {"tag": tag, "kind": "unknown"}
+
+
+@lru_cache(maxsize=4096)
+def _closest_known(tag: str, known: frozenset[str]) -> str | None:
+    # Comparing against a whole Danbooru dictionary takes about 0.1 s, and models repeat their mistakes.
+    close = difflib.get_close_matches(tag, known, n=1, cutoff=0.88)
+    return close[0] if close else None
 
 
 # --- Turning a model reply into a caption ------------------------------------
@@ -109,6 +117,13 @@ def build_suggestion(reply: dict, profile: TaggingProfile, trigger: str) -> dict
             tag = normalize_tag(str(item))
             if not tag or tag in seen:
                 continue
+            # Spelling is corrected before the rules are applied, so that a misspelt banned tag or
+            # fixed trait is still caught.
+            correction = None
+            if tag not in preferred and tag not in banned and tag not in fixed:
+                tag, correction = check_against_dictionary(tag)
+                if tag in seen:
+                    continue
             if tag in banned:
                 issues.append({"tag": tag, "kind": "banned"})
                 continue
@@ -118,12 +133,8 @@ def build_suggestion(reply: dict, profile: TaggingProfile, trigger: str) -> dict
             if profile.preferred_only and preferred and tag not in preferred:
                 issues.append({"tag": tag, "kind": "not_in_vocabulary"})
                 continue
-            if tag not in preferred:
-                tag, issue = check_against_dictionary(tag)
-                if issue:
-                    issues.append(issue)
-                if tag in seen:
-                    continue
+            if correction:
+                issues.append(correction)
             seen.add(tag)
             kept.append(tag)
         if kept:
@@ -141,7 +152,7 @@ def build_suggestion(reply: dict, profile: TaggingProfile, trigger: str) -> dict
 
 def encode_image(path) -> str:
     with Image.open(path) as image:
-        image = ImageOps.exif_transpose(image).convert("RGB")
+        image = to_rgb(image)
         image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.LANCZOS)
         buffer = io.BytesIO()
         image.save(buffer, "JPEG", quality=90)
@@ -203,7 +214,7 @@ def _run_job(job: Job, project_id: int, image_ids: list[int], profile: TaggingPr
 
 
 def _run_job_inner(job: Job, project_id: int, image_ids: list[int], profile: TaggingProfile) -> None:
-    with db.connect() as conn:
+    with db.session() as conn:
         settings = load_settings(conn)
         trigger = conn.execute("SELECT trigger FROM projects WHERE id = ?", (project_id,)).fetchone()["trigger"]
         rows = {
@@ -224,7 +235,7 @@ def _run_job_inner(job: Job, project_id: int, image_ids: list[int], profile: Tag
             row = rows[image_id]
             reply = parse_reply(ask_model(client, settings.tagger_model, prompt, encode_image(image_path(row))))
             suggestion = build_suggestion(reply, profile, trigger)
-            with db.connect() as conn:
+            with db.session() as conn:
                 conn.execute(
                     """INSERT INTO tag_suggestions (image_id, caption, groups, issues, model, goal)
                        VALUES (?, ?, ?, ?, ?, ?)

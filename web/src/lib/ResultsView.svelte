@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Download, GalleryHorizontalEnd, Star } from '@lucide/svelte'
+  import { Download, GalleryHorizontalEnd, Star, Trash2 } from '@lucide/svelte'
   import { checkpointEpoch, parseSampleName, runApi, sampleUrl, type Project, type Run } from './api'
 
   let {
@@ -21,9 +21,19 @@
   const run = $derived(runs?.find((r) => r.id === selectedId) ?? runs?.[0] ?? null)
 
   async function refresh() {
-    runs = await runApi.list(project.id)
+    const fresh = await runApi.list(project.id)
+    // While notes are being typed or saved, the server's copy is older than the text box.
+    if (!notesBusy) runs = fresh
   }
   refresh()
+
+  // A run still going gains rounds and previews; keep them coming in.
+  const anyActive = $derived(runs?.some((r) => r.status === 'queued' || r.status === 'running') ?? false)
+  $effect(() => {
+    if (!anyActive) return
+    const timer = setInterval(() => refresh().catch(() => {}), 4000)
+    return () => clearInterval(timer)
+  })
 
   function replace(updated: Run) {
     runs = runs!.map((r) => (r.id === updated.id ? updated : r))
@@ -103,10 +113,36 @@
 
   let pendingExport = $state<string | null>(null)
   let notesTimer: ReturnType<typeof setTimeout>
+  let notesBusy = 0 // saves scheduled or under way
   function saveNotes(value: string) {
-    clearTimeout(notesTimer)
-    const id = run!.id
-    notesTimer = setTimeout(async () => replace(await runApi.update(id, { notes: value })), 500)
+    // The text box is the truth while typing: the answer to a save must never be written back into it.
+    const target = run!
+    target.notes = value
+    if (notesTimer) (clearTimeout(notesTimer), notesBusy--)
+    notesBusy++
+    notesTimer = setTimeout(async () => {
+      notesTimer = undefined!
+      try {
+        await runApi.update(target.id, { notes: value })
+      } catch (error) {
+        message = String(error)
+      } finally {
+        notesBusy--
+      }
+    }, 500)
+  }
+
+  async function remove() {
+    const target = run!
+    if (!confirm(`删除训练 ${target.name}？它保存的 ${target.checkpoints.length} 个轮次和预览图都会被删除，无法恢复。已经导出的文件不受影响。`)) return
+    message = ''
+    try {
+      await runApi.remove(target.id)
+      runs = runs!.filter((r) => r.id !== target.id)
+      selectedId = null
+    } catch (error) {
+      message = String(error)
+    }
   }
 </script>
 
@@ -149,6 +185,9 @@
           </p>
           {#if changes.length}
             <p class="muted">和上一次相比：{changes.join('；')}</p>
+          {/if}
+          {#if run.status !== 'queued' && run.status !== 'running'}
+            <button class="btn btn-xs btn-ghost text-error mt-1" onclick={remove}><Trash2 />删除这次训练</button>
           {/if}
         </div>
         <textarea

@@ -107,13 +107,24 @@ def _metadata(config: TrainConfig, items, epoch: int, step: int, total_steps: in
     return {k: str(v) for k, v in meta.items() if v is not None}
 
 
+class StopRequested(Exception):
+    """The user asked for the run to stop. Carries the number of steps trained so far."""
+
+    def __init__(self, step: int):
+        super().__init__(step)
+        self.step = step
+
+
 def run(run_dir: Path) -> None:
     config = TrainConfig.model_validate_json((run_dir / "config.json").read_text(encoding="utf-8"))
     events = EventSink(run_dir)
     pid_file = run_dir / "pid"  # lets a restarted server find out whether this run is still going
     pid_file.write_text(str(os.getpid()))
+    started_at = time.time()
     try:
-        _run(run_dir, config, events)
+        _run(run_dir, config, events, started_at)
+    except StopRequested as stop:
+        events.emit("done", stopped=True, step=stop.step, seconds=time.time() - started_at)
     except Exception as exc:
         events.emit("error", message=f"{type(exc).__name__}: {exc}")
         raise
@@ -122,17 +133,21 @@ def run(run_dir: Path) -> None:
         pid_file.unlink(missing_ok=True)
 
 
-def _run(run_dir: Path, config: TrainConfig, events: EventSink) -> None:
+def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: float) -> None:
     checkpoint_dir = run_dir / "checkpoints"
     sample_dir = run_dir / "samples"
     checkpoint_dir.mkdir(exist_ok=True)
     sample_dir.mkdir(exist_ok=True)
     stop_flag = run_dir / "stop"
 
+    def check_stop(step: int = 0) -> None:
+        # Asked between units of work that each take seconds: a training step, an image to cache, a preview.
+        if stop_flag.exists():
+            raise StopRequested(step)
+
     device = torch.device("cuda")
     weight_dtype = DTYPES[config.mixed_precision]
     autocast_dtype = None if config.mixed_precision == "no" else weight_dtype
-    started_at = time.time()
 
     rng = random.Random(config.seed)
     torch.manual_seed(config.seed)
@@ -140,12 +155,18 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink) -> None:
     # --- Models ---
     events.emit("status", phase="loading_model")
     models = sdxl.load_models(config.base_model, config.vae, weight_dtype)
+    check_stop()
 
     # --- Data ---
     items = data.prepare_items(config)
     events.emit("status", phase="caching_latents", total=len(items))
     models.vae.to(device)
-    data.cache_latents(items, models.vae, device, lambda done, total: events.emit("cache", done=done, total=total))
+
+    def on_cached(done: int, total: int) -> None:
+        events.emit("cache", done=done, total=total)
+        check_stop()
+
+    data.cache_latents(items, models.vae, device, on_cached)
     models.vae.to("cpu")
     torch.cuda.empty_cache()
 
@@ -230,6 +251,7 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink) -> None:
         models.vae.to(device)
         models.vae.enable_tiling()
         for index, sp in enumerate(config.sample_prompts):
+            check_stop(step)
             image = sdxl.sample_image(
                 models,
                 sp.prompt,
@@ -257,18 +279,15 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink) -> None:
     network.train()
     step = 0
     recent_losses: deque[float] = deque(maxlen=100)
-    stopped = False
 
     for epoch in range(1, config.epochs + 1):
         batches = data.make_batches(items, config, rng)
         optimizer.zero_grad(set_to_none=True)
-        accumulated = 0.0
+        accumulated, micro_batches = 0.0, 0  # loss summed over the batches of the current optimizer step
+        step_started = time.time()
 
         for batch_index, batch in enumerate(batches):
-            if stop_flag.exists():
-                stopped = True
-                break
-            step_started = time.time()
+            check_stop(step)
 
             latents = data.sample_latents(torch.stack([item.latent_params for item in batch])).to(device)
             latents = latents * sdxl.VAE_SCALING_FACTOR
@@ -316,7 +335,8 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink) -> None:
                 raise RuntimeError(f"Loss became {loss.item()} at step {step + 1}; try a lower learning rate or bf16.")
 
             scaler.scale(loss / config.gradient_accumulation_steps).backward()
-            accumulated += loss.item() / config.gradient_accumulation_steps
+            accumulated += loss.item()
+            micro_batches += 1
 
             is_last = batch_index == len(batches) - 1
             if (batch_index + 1) % config.gradient_accumulation_steps != 0 and not is_last:
@@ -333,21 +353,21 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink) -> None:
                 network.apply_max_norm_regularization(config.scale_weight_norms, device)
 
             step += 1
-            recent_losses.append(accumulated)
+            # Mean over the batches actually accumulated: the last step of an epoch may hold fewer.
+            step_loss = accumulated / micro_batches
+            recent_losses.append(step_loss)
             group = optimizer.param_groups[-1]
             events.emit(
                 "step",
                 step=step,
                 epoch=epoch,
-                loss=accumulated,
+                loss=step_loss,
                 loss_avg=sum(recent_losses) / len(recent_losses),
                 lr=group["lr"] * group.get("d", 1.0),  # Prodigy's effective LR is lr * d
                 seconds=time.time() - step_started,
             )
-            accumulated = 0.0
-
-        if stopped:
-            break
+            accumulated, micro_batches = 0.0, 0
+            step_started = time.time()
 
         is_final = epoch == config.epochs
         if is_final or (config.save_every_n_epochs and epoch % config.save_every_n_epochs == 0):
@@ -357,4 +377,4 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink) -> None:
             events.emit("status", phase="training")
         events.emit("epoch", epoch=epoch, step=step)
 
-    events.emit("done", stopped=stopped, step=step, seconds=time.time() - started_at)
+    events.emit("done", stopped=False, step=step, seconds=time.time() - started_at)

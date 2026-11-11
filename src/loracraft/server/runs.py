@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,42 +59,74 @@ def _read_events(directory: Path, after: int = 0) -> list[dict]:
     return events
 
 
+class _Progress:
+    """Progress figures of one run, folded from its event log.
+
+    The UI polls run summaries every few seconds, so each call reads only what the trainer has
+    appended since the previous one instead of the whole log.
+    """
+
+    def __init__(self) -> None:
+        self._offset = 0  # bytes of events.jsonl already folded in
+        self._step_seconds: deque[float] = deque(maxlen=50)
+        self._figures = {
+            "phase": None,
+            "step": 0,
+            "total_steps": None,
+            "steps_per_epoch": None,
+            "epoch": 0,
+            "loss_avg": None,
+            "seconds_per_step": None,
+            "cache_done": 0,
+            "error": None,
+        }
+
+    def read(self, directory: Path) -> dict:
+        try:
+            with open(directory / "events.jsonl", "rb") as f:
+                f.seek(self._offset)
+                appended = f.read()
+        except OSError:
+            appended = b""
+        complete = appended.rfind(b"\n") + 1  # a last line still being written waits for the next call
+        self._offset += complete
+        for line in appended[:complete].splitlines():
+            try:
+                self._fold(json.loads(line))
+            except (ValueError, KeyError):
+                continue
+        if self._step_seconds:
+            # Median of recent steps: robust against the slow first steps while kernels warm up.
+            self._figures["seconds_per_step"] = statistics.median(self._step_seconds)
+        return dict(self._figures)
+
+    def _fold(self, event: dict) -> None:
+        kind = event["type"]
+        if kind == "status":
+            self._figures["phase"] = event["phase"]
+        elif kind == "start":
+            self._figures.update(total_steps=event["total_steps"], steps_per_epoch=event["steps_per_epoch"])
+        elif kind == "cache":
+            self._figures["cache_done"] = event["done"]
+        elif kind == "step":
+            self._figures.update(step=event["step"], epoch=event["epoch"], loss_avg=event["loss_avg"])
+            self._step_seconds.append(event["seconds"])
+        elif kind == "error":
+            self._figures["error"] = event["message"]
+
+
+_progress: dict[str, _Progress] = {}  # by run directory
+_progress_lock = threading.Lock()
+
+
 def _summary(row: sqlite3.Row) -> dict:
     """Run row plus the progress figures the UI needs for lists and the status bar."""
     directory = run_dir(row)
     data = dict(row)
     data["config"] = json.loads(row["config"])
     data["num_images"] = len(data["config"].pop("images"))
-
-    progress = {
-        "phase": None,
-        "step": 0,
-        "total_steps": None,
-        "steps_per_epoch": None,
-        "epoch": 0,
-        "loss_avg": None,
-        "seconds_per_step": None,
-        "cache_done": 0,
-        "error": None,
-    }
-    step_seconds = []
-    for event in _read_events(directory):
-        kind = event["type"]
-        if kind == "status":
-            progress["phase"] = event["phase"]
-        elif kind == "start":
-            progress.update(total_steps=event["total_steps"], steps_per_epoch=event["steps_per_epoch"])
-        elif kind == "cache":
-            progress["cache_done"] = event["done"]
-        elif kind == "step":
-            progress.update(step=event["step"], epoch=event["epoch"], loss_avg=event["loss_avg"])
-            step_seconds.append(event["seconds"])
-        elif kind == "error":
-            progress["error"] = event["message"]
-    if step_seconds:
-        # Median of recent steps: robust against the slow first steps while kernels warm up.
-        progress["seconds_per_step"] = statistics.median(step_seconds[-50:])
-    data["progress"] = progress
+    with _progress_lock:
+        data["progress"] = _progress.setdefault(str(directory), _Progress()).read(directory)
     data["checkpoints"] = sorted(p.name for p in (directory / "checkpoints").glob("*.safetensors"))
     data["samples"] = sorted(p.name for p in (directory / "samples").glob("*.png"))
     return data
@@ -177,7 +210,7 @@ class RunQueue:
         while not self._closing:
             row = None
             try:
-                with db.connect() as conn:
+                with db.session() as conn:
                     row = conn.execute("SELECT * FROM runs WHERE status = 'queued' ORDER BY id LIMIT 1").fetchone()
                 if row is None:
                     self._wake.wait()
@@ -197,7 +230,7 @@ class RunQueue:
     def _adopt_orphans(self) -> None:
         # A trainer started by a previous server process may still be working: it does not depend
         # on the server. Wait for it rather than starting a second job on the same GPU.
-        with db.connect() as conn:
+        with db.session() as conn:
             orphans = conn.execute("SELECT * FROM runs WHERE status = 'running' ORDER BY id").fetchall()
         for row in orphans:
             while trainer_alive(run_dir(row)) and not self._closing:
@@ -207,8 +240,13 @@ class RunQueue:
 
     def _execute(self, row: sqlite3.Row) -> None:
         directory = run_dir(row)
-        with db.connect() as conn:
-            conn.execute("UPDATE runs SET status = 'running', started_at = datetime('now') WHERE id = ?", (row["id"],))
+        with db.session() as conn:
+            claimed = conn.execute(
+                "UPDATE runs SET status = 'running', started_at = datetime('now') WHERE id = ? AND status = 'queued'",
+                (row["id"],),
+            ).rowcount
+        if not claimed:
+            return  # stopped by the user in the moment between being picked and being started
 
         with open(directory / "trainer.log", "ab") as log:
             process = subprocess.Popen(
@@ -232,7 +270,7 @@ class RunQueue:
             status = "failed"
         else:
             status = "stopped" if done["stopped"] else "done"
-        with db.connect() as conn:
+        with db.session() as conn:
             conn.execute("UPDATE runs SET status = ?, finished_at = datetime('now') WHERE id = ?", (status, row["id"]))
 
 
@@ -318,6 +356,21 @@ def update_run(run_id: int, body: RunPatch, conn: sqlite3.Connection = Depends(d
     for field, value in body.model_dump(exclude_none=True).items():
         conn.execute(f"UPDATE runs SET {field} = ? WHERE id = ?", (value, run_id))
     return _summary(_run(conn, run_id))
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Remove a finished run together with its checkpoints and preview images."""
+    row = _run(conn, run_id)
+    if row["status"] in ("queued", "running"):
+        raise HTTPException(409, "这次训练还在进行或排队，先停止它")
+    directory = run_dir(row)
+    conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+    conn.commit()  # row first: leftover files are harmless, a row without its files is not
+    shutil.rmtree(directory, ignore_errors=True)
+    with _progress_lock:
+        _progress.pop(str(directory), None)
+    return {"ok": True}
 
 
 @router.get("/runs/{run_id}/samples/{name}")

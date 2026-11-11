@@ -114,6 +114,7 @@
     error = ''
     try {
       await taggingApi.run(project.id, ids, currentProfile())
+      for (const id of ids) delete removed[id] // strikes belonged to the suggestions being replaced
       await refresh()
     } catch (e) {
       error = String(e)

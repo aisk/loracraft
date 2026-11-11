@@ -2,14 +2,16 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import datasets, db, runs, system, tagging
 
 WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
+LOCAL_HOSTS = {"127.0.0.1", "localhost"}
 
 
 @asynccontextmanager
@@ -21,6 +23,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LoraCraft", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def local_only(request: Request, call_next):
+    """Serve this machine's own pages only.
+
+    The API has no login, so a web page elsewhere must not reach it: neither by pointing its own
+    domain at 127.0.0.1 (a foreign Host header) nor by posting across origins (a foreign Origin).
+    """
+    origin = request.headers.get("origin")
+    if request.url.hostname not in LOCAL_HOSTS or (origin and urlsplit(origin).hostname not in LOCAL_HOSTS):
+        return PlainTextResponse("Forbidden", status_code=403)
+    return await call_next(request)
+
+
 app.include_router(datasets.router)
 app.include_router(runs.router)
 app.include_router(system.router)

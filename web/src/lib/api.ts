@@ -180,6 +180,7 @@ export const runApi = {
   stop: (runId: number) => request<{ ok: boolean }>(`/runs/${runId}/stop`, { method: 'POST' }),
   update: (runId: number, body: Partial<Pick<Run, 'name' | 'notes' | 'rating' | 'best_checkpoint'>>) =>
     request<Run>(`/runs/${runId}`, json('PATCH', body)),
+  remove: (runId: number) => request<{ ok: boolean }>(`/runs/${runId}`, { method: 'DELETE' }),
   exportCheckpoint: (runId: number, checkpoint: string) =>
     request<{ path: string }>(`/runs/${runId}/export`, json('POST', { checkpoint })),
 

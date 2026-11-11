@@ -43,3 +43,16 @@ def test_suggestion_applies_profile_rules(monkeypatch):
 def test_natural_format_prefixes_trigger():
     suggestion = tagging.build_suggestion({"caption": "A girl sits."}, TaggingProfile(format="natural"), "mychar")
     assert suggestion["caption"] == "mychar, A girl sits."
+
+
+def test_misspelt_banned_tags_and_fixed_traits_are_still_caught(monkeypatch):
+    monkeypatch.setattr(tagging, "dictionary", lambda: frozenset({"blonde hair", "smile", "1girl"}))
+    profile = TaggingProfile(goal="character", fixed_traits=["blonde hair"], banned_tags=["smile"])
+    reply = {"tags": {"subject": ["1girl"], "appearance": ["blonde hairs"], "expression": ["smiles"]}}
+    suggestion = tagging.build_suggestion(reply, profile, "mychar")
+
+    assert suggestion["caption"] == "mychar, 1girl"
+    assert {(i["tag"], i["kind"]) for i in suggestion["issues"]} == {
+        ("blonde hair", "fixed_trait"),
+        ("smile", "banned"),
+    }

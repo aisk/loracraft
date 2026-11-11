@@ -48,7 +48,7 @@
   )
 
   const headline = $derived.by(() => {
-    if (stopping) return '正在停止，当前这一步结束后停下'
+    if (stopping) return '正在停止，手头这一步做完就停下'
     if (run.status === 'queued') return '排队中，等前一个训练结束'
     switch (p.phase) {
       case 'loading_model':
@@ -93,7 +93,11 @@
   async function stop() {
     if (!confirm('停止这次训练？已经保存的轮次会保留。')) return
     stopping = true
-    await runApi.stop(run.id)
+    try {
+      await runApi.stop(run.id)
+    } catch {
+      stopping = false // not delivered; the button comes back so it can be tried again
+    }
   }
 </script>
 

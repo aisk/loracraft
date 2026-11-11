@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
+from ..imaging import to_rgb
 from .bucketing import BucketAssignment, assign_bucket, make_bucket_resolutions
 from .config import TrainConfig
 
@@ -31,7 +32,8 @@ class Item:
 
 
 def _load_cropped(item: Item) -> torch.Tensor:
-    image = ImageOps.exif_transpose(Image.open(item.path)).convert("RGB")
+    with Image.open(item.path) as source:
+        image = to_rgb(source)
     image = image.resize(item.assignment.resized, Image.LANCZOS)
     left, top = item.assignment.crop
     bw, bh = item.assignment.bucket

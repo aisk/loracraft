@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 SCHEMA = """
@@ -61,6 +62,11 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 
+# Statements that bring a database created by an earlier version up to SCHEMA, oldest first.
+# A database's `user_version` is the number of entries already applied to it; append, never edit.
+MIGRATIONS: list[str] = []
+
+
 def workspace() -> Path:
     """Root directory for all user data: the database, images, runs."""
     root = Path(os.environ.get("LORACRAFT_HOME", "workspace")).resolve()
@@ -85,9 +91,26 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def session():
+    """A connection for use outside a request: commits on success, rolls back on error, always closes."""
+    conn = connect()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def init() -> None:
-    with connect() as conn:
+    with session() as conn:
+        fresh = conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'projects'").fetchone() is None
         conn.executescript(SCHEMA)
+        # A fresh database is created from SCHEMA, which already includes every migration.
+        version = len(MIGRATIONS) if fresh else conn.execute("PRAGMA user_version").fetchone()[0]
+        for statement in MIGRATIONS[version:]:
+            conn.executescript(statement)
+        conn.execute(f"PRAGMA user_version = {len(MIGRATIONS)}")
 
 
 def get_db():

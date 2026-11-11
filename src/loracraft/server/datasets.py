@@ -3,6 +3,7 @@
 import hashlib
 import shutil
 import sqlite3
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -10,6 +11,7 @@ from fastapi.responses import FileResponse
 from PIL import Image, ImageOps
 from pydantic import BaseModel
 
+from ..imaging import to_rgb
 from . import db
 
 router = APIRouter(prefix="/api")
@@ -187,20 +189,22 @@ def list_images(project_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
 
 
 @router.post("/projects/{project_id}/images")
-async def upload_images(project_id: int, files: list[UploadFile], conn: sqlite3.Connection = Depends(db.get_db)):
+def upload_images(project_id: int, files: list[UploadFile], conn: sqlite3.Connection = Depends(db.get_db)):
     """Upload images. A .txt file with the same stem as an image is taken as its caption."""
+    # Not async: decoding and storing images is blocking work, which belongs in the thread pool.
     _project(conn, project_id)
-    payloads = {f.filename: await f.read() for f in files if f.filename}
+    named = [(Path(f.filename).name, f) for f in files if f.filename]
     captions = {
-        Path(name).stem: data.decode("utf-8", errors="replace")
-        for name, data in payloads.items()
+        Path(name).stem: f.file.read().decode("utf-8", errors="replace")
+        for name, f in named
         if Path(name).suffix.lower() == ".txt"
     }
 
     result = _ImportResult()
-    for name, data in payloads.items():
+    for name, f in named:
         if Path(name).suffix.lower() in IMAGE_SUFFIXES:
-            result.add(conn, project_id, Path(name).name, data, captions.get(Path(name).stem, ""))
+            # One file in memory at a time; the rest stay in the upload's temporary files.
+            result.add(conn, project_id, name, f.file.read(), captions.get(Path(name).stem, ""))
     return result.as_dict()
 
 
@@ -290,10 +294,16 @@ def get_thumb(image_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     row = _image(conn, image_id)
     thumb = _thumb_path(row)
     if not thumb.exists():
+        # Written under another name first: a request arriving meanwhile must not be served half a file.
+        partial = thumb.with_name(f"{thumb.name}.{uuid.uuid4().hex}.tmp")
         with Image.open(image_path(row)) as image:
-            image = ImageOps.exif_transpose(image).convert("RGB")
+            image = to_rgb(image)
             image.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
-            image.save(thumb, "WEBP", quality=82)
+            image.save(partial, "WEBP", quality=82)
+        try:
+            partial.replace(thumb)
+        except OSError:  # another request finished the same thumbnail first
+            partial.unlink(missing_ok=True)
     return FileResponse(thumb, media_type="image/webp", headers={"Cache-Control": "max-age=31536000, immutable"})
 
 

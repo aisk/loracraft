@@ -12,6 +12,8 @@ from . import db
 
 router = APIRouter(prefix="/api")
 
+MAX_HEADER_BYTES = 100 * 2**20  # real headers are well under 1 MB; a larger figure means a damaged file
+
 
 class Settings(BaseModel):
     model_dirs: list[str] = []  # folders scanned for base model checkpoints
@@ -47,6 +49,8 @@ def read_safetensors_header(path: Path) -> dict:
     """The JSON header of a .safetensors file: tensor names and metadata, without loading weights."""
     with open(path, "rb") as f:
         (length,) = struct.unpack("<Q", f.read(8))
+        if length > MAX_HEADER_BYTES:
+            raise ValueError(f"Implausible safetensors header length: {length}")
         return json.loads(f.read(length))
 
 
