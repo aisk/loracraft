@@ -118,7 +118,11 @@
   loadModels().catch((e) => (error = String(e)))
   runApi
     .trainer()
-    .then((status) => (trainer = status))
+    .then((status) => {
+      trainer = status
+      // The trainer only does full precision on Apple Silicon: show what will actually happen.
+      if (status.device === 'mps') settings.mixed_precision = 'no'
+    })
     .catch((e) => (error = String(e)))
 
   function pickModel(path: string) {
@@ -354,10 +358,14 @@
         </label>
         <label>
           <span>计算精度</span>
-          <select class="select select-sm" bind:value={settings.mixed_precision}>
-            <option value="fp16">fp16（推荐）</option>
-            <option value="bf16">bf16</option>
-            <option value="no">全精度（慢，占显存）</option>
+          <select class="select select-sm" bind:value={settings.mixed_precision} disabled={trainer?.device === 'mps'}>
+            {#if trainer?.device === 'mps'}
+              <option value="no">全精度（Mac 上目前只支持这一种）</option>
+            {:else}
+              <option value="fp16">fp16（推荐）</option>
+              <option value="bf16">bf16</option>
+              <option value="no">全精度（慢，占显存）</option>
+            {/if}
           </select>
         </label>
         <label><span>输出文件名</span><input class="input input-sm" type="text" bind:value={settings.output_name} /></label>

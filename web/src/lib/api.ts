@@ -160,6 +160,8 @@ export interface TrainerStatus {
   ready: boolean
   problem: 'missing' | 'no_gpu' | 'broken' | null
   torch_version: string
+  /** What the trainer will run on: `mps` is Apple Silicon. */
+  device: 'cuda' | 'mps' | null
   python: string
 }
 

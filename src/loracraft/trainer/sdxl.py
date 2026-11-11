@@ -6,6 +6,8 @@ import torch
 from diffusers import AutoencoderKL, EulerDiscreteScheduler, StableDiffusionXLPipeline, UNet2DConditionModel
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
+from .device import autocast
+
 CHUNK_TOKENS = 75
 # Fixed rather than read from the VAE's config: a standalone VAE file is not recognised as SDXL by
 # diffusers and would report the SD1.5 factor (0.18215).
@@ -108,7 +110,7 @@ def sample_image(
     )
     scheduler.set_timesteps(steps, device=device)
 
-    with torch.autocast("cuda", dtype=autocast_dtype, enabled=autocast_dtype is not None):
+    with autocast(device, autocast_dtype):
         embeds, pooled = encode_prompts(models, [negative_prompt, prompt], max_chunks)
         time_ids = make_time_ids((height, width), (0, 0), (height, width), device, embeds.dtype).repeat(2, 1)
 

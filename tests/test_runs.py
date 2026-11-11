@@ -113,3 +113,11 @@ def test_only_local_pages_may_use_the_api(client):
     assert client.get("/api/projects", headers={"Host": "evil.example"}).status_code == 403
     assert client.get("/api/projects", headers={"Origin": "https://evil.example"}).status_code == 403
     assert client.get("/api/projects", headers={"Origin": "http://localhost:5600"}).status_code == 200
+
+
+def test_parse_ps_elapsed_time():
+    assert runs._parse_etime("   00:07\n") == 7
+    assert runs._parse_etime("01:02:03") == 3723
+    assert runs._parse_etime("2-01:02:03") == 2 * 86400 + 3723
+    with pytest.raises(ValueError):
+        runs._parse_etime("")

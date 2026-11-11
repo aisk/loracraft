@@ -30,6 +30,10 @@ tests/
 Requires Python 3.12. Training needs a GPU that PyTorch drives through CUDA or ROCm; the dataset
 and captioning tools work without one.
 
+Apple Silicon (MPS) is wired up but **has never been run on a Mac**: expect it to need fixes. It
+trains in full precision only, so it wants a lot of memory. On a Mac, plain `pip install loracraft`
+is enough, since the PyTorch build on PyPI includes MPS.
+
 Install PyTorch **first**, from the index that matches your GPU, then LoraCraft. Which index that is
 (CUDA version, ROCm, …) is listed at [pytorch.org](https://pytorch.org/get-started/locally/):
 

@@ -24,6 +24,7 @@ from diffusers.optimization import get_scheduler
 from ..vendor.kohya import train_functions as ktf
 from ..vendor.kohya.lora import LoRANetwork
 from . import data, sdxl
+from . import device as devices
 from .config import TrainConfig
 from .events import EventSink
 
@@ -145,7 +146,10 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
         if stop_flag.exists():
             raise StopRequested(step)
 
-    device = torch.device("cuda")
+    device = devices.pick_device()
+    if device.type == "mps":
+        # Half precision on MPS is unproven here: train in float32 there, and say so in the metadata.
+        config = config.model_copy(update={"mixed_precision": "no"})
     weight_dtype = DTYPES[config.mixed_precision]
     autocast_dtype = None if config.mixed_precision == "no" else weight_dtype
 
@@ -168,7 +172,7 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
 
     data.cache_latents(items, models.vae, device, on_cached)
     models.vae.to("cpu")
-    torch.cuda.empty_cache()
+    devices.empty_cache(device)
 
     models.unet.to(device)
     for text_encoder in models.text_encoders:
@@ -211,7 +215,7 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
         num_warmup_steps=config.lr_warmup_steps,
         num_training_steps=total_steps,
     )
-    scaler = torch.amp.GradScaler("cuda", enabled=config.mixed_precision == "fp16")
+    scaler = torch.amp.GradScaler(device.type, enabled=config.mixed_precision == "fp16")
 
     noise_scheduler = DDPMScheduler(
         beta_start=0.00085,
@@ -270,7 +274,7 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
             image.save(path)
             events.emit("sample", epoch=epoch, step=step, prompt_index=index, path=str(path))
         models.vae.to("cpu")
-        torch.cuda.empty_cache()
+        devices.empty_cache(device)
         network.train()
 
     # --- Loop ---
@@ -303,7 +307,7 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
 
             captions = [data.process_caption(item.caption, config, rng) for item in batch]
 
-            with torch.autocast("cuda", dtype=autocast_dtype, enabled=autocast_dtype is not None):
+            with devices.autocast(device, autocast_dtype):
                 with torch.set_grad_enabled(config.train_text_encoder):
                     embeds, pooled = sdxl.encode_prompts(models, captions, config.max_token_chunks)
                 time_ids = torch.cat(

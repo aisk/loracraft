@@ -53,14 +53,20 @@ def put_settings(body: Settings, conn: sqlite3.Connection = Depends(db.get_db)) 
 def trainer_status() -> dict:
     """Whether this Python environment can train: PyTorch must be installed and see a GPU.
 
+    `device` is what the trainer will use: "cuda" (also ROCm) or "mps" (Apple Silicon).
+
     Which PyTorch build is right depends on the GPU, so the user installs it; the usual mistake is
     ending up with the CPU-only build. Asked of a child process, because importing torch is slow
     and the server has no other use for it. Cached: a new installation needs a restart anyway.
     """
-    status = {"ready": False, "problem": "missing", "torch_version": "", "python": sys.executable}
+    status = {"ready": False, "problem": "missing", "torch_version": "", "device": None, "python": sys.executable}
     if importlib.util.find_spec("torch") is None:
         return status
-    probe = "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+    # The same order as trainer.device.pick_device.
+    probe = (
+        "import torch; print(torch.__version__); "
+        "print('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'none')"
+    )
     try:
         out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
@@ -68,9 +74,9 @@ def trainer_status() -> dict:
     lines = out.stdout.split()
     if out.returncode != 0 or len(lines) != 2:
         return status | {"problem": "broken"}  # installed, but the import itself fails
-    if lines[1] != "True":
+    if lines[1] not in ("cuda", "mps"):
         return status | {"problem": "no_gpu", "torch_version": lines[0]}
-    return status | {"ready": True, "problem": None, "torch_version": lines[0]}
+    return status | {"ready": True, "problem": None, "torch_version": lines[0], "device": lines[1]}
 
 
 @router.get("/trainer")

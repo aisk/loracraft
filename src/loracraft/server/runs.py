@@ -132,14 +132,32 @@ def _summary(row: sqlite3.Row) -> dict:
     return data
 
 
+def _parse_etime(text: str) -> int:
+    """Seconds in the elapsed time printed by `ps -o etime=`: `[[dd-]hh:]mm:ss`."""
+    days, _, clock = text.strip().rpartition("-")
+    seconds = 0
+    for part in clock.split(":"):
+        seconds = seconds * 60 + int(part)
+    return int(days or 0) * 86400 + seconds
+
+
 def _process_started_at(pid: int) -> float | None:
     """Unix time at which the running process `pid` was created, or None if no such process runs."""
-    if sys.platform != "win32":
+    if sys.platform == "linux":
         try:
             os.kill(pid, 0)
             return Path(f"/proc/{pid}").stat().st_ctime
         except OSError:
             return None
+    if sys.platform != "win32":
+        # macOS and the BSDs have no /proc: ask ps how long the process has been running.
+        try:
+            out = subprocess.run(
+                ["ps", "-o", "etime=", "-p", str(pid)], capture_output=True, text=True, timeout=10
+            ).stdout
+            return time.time() - _parse_etime(out)
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            return None  # ps prints nothing for a pid that is not running
 
     import ctypes
 
