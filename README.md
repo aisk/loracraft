@@ -95,6 +95,15 @@ To build the distributions (the web UI must be built first):
 uv build
 ```
 
+To release, set the new version in `pyproject.toml`, commit, then tag that commit and push the tag.
+The release workflow builds the distributions, uploads them to PyPI and creates the GitHub release:
+
+```sh
+uv version 0.2.0                     # also updates uv.lock
+git commit -am "🔖 Release 0.2.0"
+git tag v0.2.0 && git push origin main v0.2.0
+```
+
 ## Training worker
 
 A run is a directory containing `config.json` (see `trainer/config.py`):

@@ -1,19 +1,18 @@
 name: Release
 
-# Publishing a GitHub release builds the distributions and uploads them to PyPI through
-# trusted publishing: no token is stored here. PyPI must list this repository, this workflow
-# file and the `pypi` environment as a trusted publisher of the project.
+# Pushing a tag `v<version>` builds the distributions, uploads them to PyPI and creates the
+# GitHub release. Uploading uses trusted publishing, so no token is stored here: PyPI must list
+# this repository, this workflow file and the `pypi` environment as a trusted publisher.
+#
+# Running it by hand builds only, to check that a release would build.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,6 +25,41 @@ jobs:
         run: npm ci && npm run build
       - uses: astral-sh/setup-uv@v6
       - name: Check that the tag matches the package version
+        if: github.ref_type == 'tag'
         run: test "v$(uv version --short)" = "$GITHUB_REF_NAME"
       - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/loracraft-*
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: astral-sh/setup-uv@v6
       - run: uv publish
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Create the GitHub release
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
