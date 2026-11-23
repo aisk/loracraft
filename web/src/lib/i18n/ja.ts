@@ -216,6 +216,18 @@ const ja: Messages = {
     modelTitle: '画像を見るモデル',
     modelHelp:
       'OpenAI 互換 API の画像認識モデルなら何でも使えます：クラウドのサービスでも、このマシンの Ollama や LM Studio でも。素材をクラウドに送りたくないときはローカルモデルを。',
+    backends: { local: 'このマシンのタガー', llm: '画像認識 LLM' },
+    localHelp:
+      'このパソコンで動くタグ認識モデルです。設定も GPU も不要で、画像が外に送られることはありません。書けるのは Danbooru タグだけで、アニメ系の画像に向いています。初回に自動でダウンロードされます。',
+    localModelOption: (name, gb) => `${name}（約 ${gb} GB）`,
+    localModelsHint: '一番上が最も正確で、下のものほど小さく速くなります。',
+    localNoInstructions:
+      'このマシンのタガーは指示を読まないため、これらを自分では除外しません。入れたくないタグは下の「使わないタグ」に書いてください。',
+    skipIdentity: '髪・瞳の色・体型のタグを自動で除外する',
+    threshold: (value) => `タグを書くのに必要な確信度：${value}`,
+    thresholdHelp: '下げるとタグが増えますが誤りも増えます。上げると少なく、確かなものだけになります。',
+    downloading: (percent) => `モデルをダウンロード中 ${percent}%（初回のみ）`,
+    loadingModel: 'モデルを読み込み中…',
     goalTitle: 'この LoRA が覚えるもの',
     fixedTraits: 'このキャラクター固有の特徴',
     concept: '覚えさせる概念',

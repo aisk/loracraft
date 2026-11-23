@@ -190,6 +190,8 @@ export interface BaseModel {
 export interface Settings {
   model_dirs: string[]
   export_dir: string
+  tagger_backend: 'local' | 'llm'
+  tagger_local_model: string
   tagger_base_url: string
   tagger_api_key: string
   tagger_model: string
@@ -246,6 +248,8 @@ export interface TaggingProfile {
   preferred_only: boolean
   banned_tags: string[]
   extra_instructions: string
+  threshold: number
+  skip_identity_tags: boolean
 }
 
 export interface TagIssue {
@@ -267,8 +271,16 @@ export interface TaggingState {
   profile: TaggingProfile
   prompt: string
   configured: boolean
+  local_models: { repo: string; size_gb: number }[]
   dictionary_size: number
-  job: { total: number; done: number; running: boolean; errors: { image_id: number; message: string }[] } | null
+  job: {
+    total: number
+    done: number
+    running: boolean
+    preparing: boolean
+    download: number | null
+    errors: { image_id: number; message: string }[]
+  } | null
   suggestions: TagSuggestion[]
 }
 

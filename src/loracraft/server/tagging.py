@@ -1,8 +1,8 @@
-"""Automatic captioning with a vision LLM.
+"""Automatic captioning, by a tagger model on this machine or by a vision LLM.
 
 Results are stored as suggestions and never overwrite a caption until the user accepts them.
-Any OpenAI-compatible chat completions endpoint works: hosted APIs, OpenRouter, or a local
-server such as Ollama or LM Studio.
+The local tagger is described in `local_tagger`. For a vision LLM, any OpenAI-compatible chat
+completions endpoint works: hosted APIs, OpenRouter, or a local server such as Ollama or LM Studio.
 """
 
 import base64
@@ -12,6 +12,7 @@ import io
 import json
 import sqlite3
 import threading
+from collections.abc import Callable, Collection
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
@@ -21,7 +22,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from ..imaging import to_rgb
-from . import db
+from . import db, local_tagger
 from .datasets import image_path, join_tags, split_tags
 from .system import load_settings
 from .tagging_prompt import CATEGORIES, TaggingProfile, build_prompt
@@ -92,8 +93,13 @@ def parse_reply(text: str) -> dict:
         raise ValueError(f"The model's answer was not valid JSON: {text.strip()[:200]}") from None
 
 
-def build_suggestion(reply: dict, profile: TaggingProfile, trigger: str) -> dict:
-    """Apply the profile's rules to a parsed reply. Returns caption, grouped tags and issues."""
+def build_suggestion(
+    reply: dict, profile: TaggingProfile, trigger: str, *, check_spelling: bool = True, identity: Collection[str] = ()
+) -> dict:
+    """Apply the profile's rules to a parsed reply. Returns caption, grouped tags and issues.
+
+    `identity` holds further tags to treat like the profile's fixed traits.
+    """
     sentence = str(reply.get("caption", "")).strip()
     if profile.format == "natural":
         caption = f"{trigger}, {sentence}" if trigger else sentence
@@ -101,6 +107,7 @@ def build_suggestion(reply: dict, profile: TaggingProfile, trigger: str) -> dict
 
     banned = {normalize_tag(t) for t in profile.banned_tags}
     fixed = {normalize_tag(t) for t in profile.fixed_traits} if profile.goal == "character" else set()
+    fixed.update(identity)
     preferred = {normalize_tag(t) for t in profile.preferred_tags}
 
     raw = reply.get("tags", {})
@@ -120,7 +127,7 @@ def build_suggestion(reply: dict, profile: TaggingProfile, trigger: str) -> dict
             # Spelling is corrected before the rules are applied, so that a misspelt banned tag or
             # fixed trait is still caught.
             correction = None
-            if tag not in preferred and tag not in banned and tag not in fixed:
+            if check_spelling and tag not in preferred and tag not in banned and tag not in fixed:
                 tag, correction = check_against_dictionary(tag)
                 if tag in seen:
                     continue
@@ -145,6 +152,27 @@ def build_suggestion(reply: dict, profile: TaggingProfile, trigger: str) -> dict
     if profile.format == "mixed" and sentence:
         caption = f"{caption}, {sentence}"
     return {"caption": caption, "groups": groups, "issues": issues}
+
+
+def build_local_suggestion(found: dict[str, list[str]], profile: TaggingProfile, trigger: str) -> dict:
+    """Turn what the local tagger found in an image into a suggestion.
+
+    The tagger cannot be instructed, so what a vision LLM is asked to leave out is removed here.
+    """
+    general = [normalize_tag(t) for t in found["general"]]
+    characters = [normalize_tag(t) for t in found["character"]]
+    identity: set[str] = set()
+    if profile.goal == "character":
+        identity.update(characters)  # the trigger word stands for the character, not their name
+        if profile.skip_identity_tags:
+            identity.update(t for t in general if local_tagger.is_identity_tag(t))
+    return build_suggestion(
+        {"tags": {"subject": characters + general}},
+        profile.model_copy(update={"format": "danbooru"}),  # all it can write
+        trigger,
+        check_spelling=False,  # its tags are real ones by construction
+        identity=identity,
+    )
 
 
 # --- Calling the model -------------------------------------------------------
@@ -195,9 +223,18 @@ class Job:
         self.errors: list[dict] = []
         self.cancelled = False
         self.running = True
+        self.preparing = False  # loading the local tagger, which on first use means downloading it
+        self.download: float | None = None  # progress of that download, 0 to 1
 
     def snapshot(self) -> dict:
-        return {"total": self.total, "done": self.done, "errors": self.errors, "running": self.running}
+        return {
+            "total": self.total,
+            "done": self.done,
+            "errors": self.errors,
+            "running": self.running,
+            "preparing": self.preparing,
+            "download": self.download,
+        }
 
 
 jobs: dict[int, Job] = {}
@@ -224,17 +261,53 @@ def _run_job_inner(job: Job, project_id: int, image_ids: list[int], profile: Tag
                 (project_id, *image_ids),
             )
         }
+    images = [rows[i] for i in image_ids if i in rows]
+
+    if settings.tagger_backend == "local":
+        job.preparing = True
+
+        def on_download(progress: float) -> None:
+            job.download = progress
+
+        try:
+            tagger = local_tagger.Tagger(settings.tagger_local_model, on_download)
+        except Exception as error:
+            raise ValueError(f"Could not load the tagger {settings.tagger_local_model}: {error}") from error
+        finally:
+            job.preparing = False
+        # One image at a time: the model already uses every core.
+        _suggest_all(
+            job,
+            images,
+            lambda row: build_local_suggestion(tagger.tag(image_path(row), profile.threshold), profile, trigger),
+            source=settings.tagger_local_model,
+            goal=profile.goal,
+            workers=1,
+        )
+        return
+
     prompt = build_prompt(profile)
     headers = {"Authorization": f"Bearer {settings.tagger_api_key}"} if settings.tagger_api_key else {}
     base_url = settings.tagger_base_url.rstrip("/") + "/"
+    with httpx.Client(base_url=base_url, headers=headers, timeout=180) as client:
 
-    def work(image_id: int) -> None:
+        def suggest(row: sqlite3.Row) -> dict:
+            reply = parse_reply(ask_model(client, settings.tagger_model, prompt, encode_image(image_path(row))))
+            return build_suggestion(reply, profile, trigger)
+
+        _suggest_all(job, images, suggest, source=settings.tagger_model, goal=profile.goal, workers=PARALLEL_REQUESTS)
+
+
+def _suggest_all(
+    job: Job, images: list[sqlite3.Row], suggest: Callable[[sqlite3.Row], dict], *, source: str, goal: str, workers: int
+) -> None:
+    """Store `suggest(image)` for every image, counting progress and collecting failures on the job."""
+
+    def work(row: sqlite3.Row) -> None:
         if job.cancelled:
             return
         try:
-            row = rows[image_id]
-            reply = parse_reply(ask_model(client, settings.tagger_model, prompt, encode_image(image_path(row))))
-            suggestion = build_suggestion(reply, profile, trigger)
+            suggestion = suggest(row)
             with db.session() as conn:
                 conn.execute(
                     """INSERT INTO tag_suggestions (image_id, caption, groups, issues, model, goal)
@@ -242,25 +315,28 @@ def _run_job_inner(job: Job, project_id: int, image_ids: list[int], profile: Tag
                        ON CONFLICT(image_id) DO UPDATE SET caption = excluded.caption, groups = excluded.groups,
                            issues = excluded.issues, model = excluded.model, goal = excluded.goal""",
                     (
-                        image_id,
+                        row["id"],
                         suggestion["caption"],
                         json.dumps(suggestion["groups"]),
                         json.dumps(suggestion["issues"]),
-                        settings.tagger_model,
-                        profile.goal,
+                        source,
+                        goal,
                     ),
                 )
         except Exception as error:  # noqa: BLE001 - one failed image must not stop the batch
-            job.errors.append({"image_id": image_id, "message": str(error)})
+            job.errors.append({"image_id": row["id"], "message": str(error)})
         finally:
             job.done += 1
 
-    with httpx.Client(base_url=base_url, headers=headers, timeout=180) as client:
-        with ThreadPoolExecutor(PARALLEL_REQUESTS) as pool:
-            list(pool.map(work, [i for i in image_ids if i in rows]))
+    with ThreadPoolExecutor(workers) as pool:
+        list(pool.map(work, images))
 
 
 # --- API ---------------------------------------------------------------------
+
+
+def _configured(settings) -> bool:
+    return settings.tagger_backend == "local" or bool(settings.tagger_base_url and settings.tagger_model)
 
 
 def _profile(conn: sqlite3.Connection, project_id: int) -> TaggingProfile:
@@ -285,7 +361,8 @@ def get_tagging(project_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     return {
         "profile": profile,
         "prompt": build_prompt(profile),
-        "configured": bool(settings.tagger_base_url and settings.tagger_model),
+        "configured": _configured(settings),
+        "local_models": [{"repo": repo, "size_gb": size} for repo, size in local_tagger.MODELS.items()],
         "dictionary_size": len(dictionary()),
         "job": job.snapshot() if job else None,
         "suggestions": [
@@ -308,7 +385,7 @@ class RunTagging(BaseModel):
 def run_tagging(project_id: int, body: RunTagging, conn: sqlite3.Connection = Depends(db.get_db)):
     _profile(conn, project_id)  # 404 for an unknown project
     settings = load_settings(conn)
-    if not (settings.tagger_base_url and settings.tagger_model):
+    if not _configured(settings):
         raise HTTPException(400, "Set up a vision model first")
     if not body.image_ids:
         raise HTTPException(400, "No images selected")

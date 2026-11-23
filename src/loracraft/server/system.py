@@ -8,11 +8,13 @@ import struct
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from . import db
+from .local_tagger import DEFAULT_MODEL
 
 router = APIRouter(prefix="/api")
 
@@ -22,10 +24,21 @@ MAX_HEADER_BYTES = 100 * 2**20  # real headers are well under 1 MB; a larger fig
 class Settings(BaseModel):
     model_dirs: list[str] = []  # folders scanned for base model checkpoints
     export_dir: str = ""  # where "export" copies a finished LoRA, e.g. ComfyUI's models/loras
-    # Vision model for auto-captioning: any OpenAI-compatible endpoint, e.g. http://localhost:11434/v1
+    # What writes the captions: a tagger model run on this machine, or a vision LLM
+    tagger_backend: Literal["local", "llm"] = "local"
+    tagger_local_model: str = DEFAULT_MODEL  # Hugging Face repository of a WD tagger
+    # Vision LLM: any OpenAI-compatible endpoint, e.g. http://localhost:11434/v1
     tagger_base_url: str = ""
     tagger_api_key: str = ""
     tagger_model: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _keep_configured_llm(cls, data):
+        # Settings saved before the local tagger existed: whoever set up a vision LLM keeps using it.
+        if isinstance(data, dict) and "tagger_backend" not in data and data.get("tagger_base_url"):
+            return data | {"tagger_backend": "llm"}
+        return data
 
 
 def load_settings(conn: sqlite3.Connection) -> Settings:

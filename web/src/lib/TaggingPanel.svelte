@@ -39,7 +39,13 @@
   let error = $state('')
   let removed = $state<Record<number, string[]>>({}) // tags the user struck from a suggestion
 
-  // Vision model connection
+  // What does the tagging: a tagger model on this machine, or a vision LLM
+  const BACKENDS = ['local', 'llm'] as const
+  let backend = $state<(typeof BACKENDS)[number]>('local')
+  let localModel = $state('')
+  const isLocal = $derived(backend === 'local')
+
+  // Vision LLM connection
   let editingModel = $state(false)
   let baseUrl = $state('')
   let apiKey = $state('')
@@ -74,6 +80,8 @@
     preferred = profile.preferred_tags.join(', ')
     banned = profile.banned_tags.join(', ')
     const settings = await runApi.getSettings()
+    backend = settings.tagger_backend
+    localModel = settings.tagger_local_model
     baseUrl = settings.tagger_base_url
     apiKey = settings.tagger_api_key
     model = settings.tagger_model
@@ -105,10 +113,24 @@
 
   async function saveModel() {
     const settings = await runApi.getSettings()
-    await runApi.putSettings({ ...settings, tagger_base_url: baseUrl.trim(), tagger_api_key: apiKey.trim(), tagger_model: model.trim() })
-    editingModel = false
+    await runApi.putSettings({
+      ...settings,
+      tagger_backend: backend,
+      tagger_local_model: localModel,
+      tagger_base_url: baseUrl.trim(),
+      tagger_api_key: apiKey.trim(),
+      tagger_model: model.trim(),
+    })
     await refresh()
+    editingModel = !tagging!.configured
   }
+
+  async function chooseBackend(choice: (typeof BACKENDS)[number]) {
+    backend = choice
+    await saveModel()
+  }
+
+  const modelName = (repo: string) => repo.split('/').pop() ?? repo
 
   async function start(ids: number[]) {
     error = ''
@@ -170,7 +192,21 @@
       <div class="form">
         <section>
           <h3>{t().tagging.modelTitle}</h3>
-          {#if editingModel}
+          <div class="choices">
+            {#each BACKENDS as b (b)}
+              <button class={['btn btn-sm', backend === b && 'btn-primary btn-soft']} onclick={() => chooseBackend(b)}>{t().tagging.backends[b]}</button>
+            {/each}
+          </div>
+          {#if isLocal}
+            <p class="help">{t().tagging.localHelp}</p>
+            <select class="select select-sm" bind:value={localModel} onchange={saveModel}>
+              {#each tagging.local_models as m (m.repo)}
+                <option value={m.repo}>{t().tagging.localModelOption(modelName(m.repo), m.size_gb)}</option>
+              {/each}
+              {#if !tagging.local_models.some((m) => m.repo === localModel)}<option value={localModel}>{localModel}</option>{/if}
+            </select>
+            <p class="help">{t().tagging.localModelsHint}</p>
+          {:else if editingModel}
             <p class="help">{t().tagging.modelHelp}</p>
             <label><span>{t().settings.baseUrl}</span><input type="text" class="input input-sm mono" placeholder="http://localhost:11434/v1" bind:value={baseUrl} /></label>
             <label><span>{t().settings.model}</span><input type="text" class="input input-sm mono" placeholder="qwen2.5vl:7b" bind:value={model} /></label>
@@ -195,12 +231,18 @@
             {/each}
           </div>
           <p class="help">{t().tagging.goals[profile.goal].hint}</p>
+          {#if isLocal && (profile.goal === 'style' || profile.goal === 'concept')}
+            <p class="help">{t().tagging.localNoInstructions}</p>
+          {/if}
           {#if profile.goal === 'character'}
+            {#if isLocal}
+              <label class="check"><input class="checkbox checkbox-sm" type="checkbox" bind:checked={profile.skip_identity_tags} /><span>{t().tagging.skipIdentity}</span></label>
+            {/if}
             <label class="stacked">
               <span>{t().tagging.fixedTraits}</span>
               <input type="text" class="input input-sm mono" placeholder="silver hair, red eyes, cat ears" bind:value={fixedTraits} />
             </label>
-          {:else if profile.goal === 'concept'}
+          {:else if profile.goal === 'concept' && !isLocal}
             <label class="stacked">
               <span>{t().tagging.concept}</span>
               <input class="input input-sm" type="text" placeholder={t().tagging.conceptPlaceholder} bind:value={profile.concept} />
@@ -210,10 +252,18 @@
 
         <section>
           <h3>{t().tagging.formatTitle}</h3>
-          <select class="select select-sm" bind:value={profile.format}>
-            {#each FORMATS as f (f)}<option value={f}>{t().tagging.formats[f]}</option>{/each}
-          </select>
-          {#if profile.format !== 'natural'}
+          {#if isLocal}
+            <label class="stacked">
+              <span>{t().tagging.threshold(profile.threshold.toFixed(2))}</span>
+              <input type="range" class="range range-xs" min="0.1" max="0.9" step="0.05" bind:value={profile.threshold} />
+            </label>
+            <p class="help">{t().tagging.thresholdHelp}</p>
+          {:else}
+            <select class="select select-sm" bind:value={profile.format}>
+              {#each FORMATS as f (f)}<option value={f}>{t().tagging.formats[f]}</option>{/each}
+            </select>
+          {/if}
+          {#if isLocal || profile.format !== 'natural'}
             <label class="stacked">
               <span>{t().tagging.preferred}</span>
               <textarea class="textarea" rows="2" placeholder={t().tagging.commaSeparated} bind:value={preferred}></textarea>
@@ -223,26 +273,36 @@
               <span>{t().tagging.banned}</span>
               <input type="text" class="input input-sm mono" placeholder={t().tagging.commaSeparated} bind:value={banned} />
             </label>
-            {#if profile.format === 'danbooru' && tagging.dictionary_size === 0}
+            {#if !isLocal && profile.format === 'danbooru' && tagging.dictionary_size === 0}
               {@const [before, after] = around(t().tagging.noDictionary)}
               <p class="help">{before}<code>dictionaries</code>{after}</p>
             {/if}
           {/if}
-          <label class="stacked">
-            <span>{t().tagging.extra}</span>
-            <textarea class="textarea" rows="2" placeholder={t().tagging.extraPlaceholder} bind:value={profile.extra_instructions}></textarea>
-          </label>
-          <details>
-            <summary>{t().tagging.showPrompt}</summary>
-            <pre>{prompt}</pre>
-          </details>
+          {#if !isLocal}
+            <label class="stacked">
+              <span>{t().tagging.extra}</span>
+              <textarea class="textarea" rows="2" placeholder={t().tagging.extraPlaceholder} bind:value={profile.extra_instructions}></textarea>
+            </label>
+            <details>
+              <summary>{t().tagging.showPrompt}</summary>
+              <pre>{prompt}</pre>
+            </details>
+          {/if}
         </section>
 
         <section class="actions">
           {#if error}<p class="error">{error}</p>{/if}
           {#if tagging.job?.running}
             <div class="row">
-              <span class="num">{t().tagging.progress(tagging.job.done, tagging.job.total)}</span>
+              <span class="num">
+                {#if !tagging.job.preparing}
+                  {t().tagging.progress(tagging.job.done, tagging.job.total)}
+                {:else if tagging.job.download !== null && tagging.job.download < 1}
+                  {t().tagging.downloading(Math.round(tagging.job.download * 100))}
+                {:else}
+                  {t().tagging.loadingModel}
+                {/if}
+              </span>
               <button class="btn btn-sm" onclick={() => taggingApi.cancel(project.id)}>{t().common.stop}</button>
             </div>
           {:else}
@@ -417,10 +477,14 @@
     align-items: center;
     gap: var(--space-2);
   }
-  .goals {
+  .goals,
+  .choices {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-1);
+  }
+  .choices {
+    grid-template-columns: repeat(2, 1fr);
   }
   .goals :global(.btn) {
     padding-inline: 0;

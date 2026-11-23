@@ -7,7 +7,7 @@ what they tell the model to leave out.
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 CATEGORIES = ["subject", "appearance", "clothing", "pose", "expression", "background", "composition", "style"]
 
@@ -23,6 +23,9 @@ class TaggingProfile(BaseModel):
     preferred_only: bool = False  # restrict output to preferred_tags
     banned_tags: list[str] = []
     extra_instructions: str = ""
+    # Local tagger only: it cannot be told what to leave out or how sure to be
+    threshold: float = Field(0.35, ge=0.05, le=0.95)  # confidence a tag needs to be suggested
+    skip_identity_tags: bool = True  # character: leave out hair, eye and body tags without listing them
 
 
 GOAL_INSTRUCTIONS = {

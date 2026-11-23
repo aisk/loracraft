@@ -7,9 +7,11 @@ SDXL first.
 
 - **Dataset**: import images with their captions, browse and filter by tag, edit tags one image at a
   time or in bulk, spot missing captions and undersized images.
-- **Auto-captioning**: a vision LLM (any OpenAI-compatible endpoint, local or hosted) writes captions
-  according to what the LoRA is for: a character, a style or a concept. Results are suggestions you
-  accept or discard; with a tag dictionary installed, invented tags are flagged or corrected.
+- **Auto-captioning**: captions are written according to what the LoRA is for: a character, a style
+  or a concept. Either by a tagger model on this machine (a WD tagger: no setup, no GPU, Danbooru
+  tags only) or by a vision LLM (any OpenAI-compatible endpoint, local or hosted), which follows
+  instructions and can also write sentences. Results are suggestions you accept or discard; with a
+  tag dictionary installed, tags invented by an LLM are flagged or corrected.
 - **Training**: a self-contained SDXL LoRA trainer with plain-language setup, a queue, live progress
   and preview images after every round.
 - **Results**: preview images of every round side by side, pick the best round, export it.
@@ -120,10 +122,18 @@ Until a run has finished, the directory also holds `state.pt`: the weights, opti
 as of the last completed epoch, or of the step at which the run was stopped. Remove `stop` and start
 the worker on the directory again to carry on from there.
 
+## Local tagger
+
+The tagger on this machine is a [WD tagger](https://huggingface.co/SmilingWolf) run with ONNX
+Runtime. The model (0.4 to 1.3 GB) is downloaded into the Hugging Face cache on first use. It runs
+on the CPU, at a few seconds per image for the largest model; if the installed ONNX Runtime build
+has a CUDA or DirectML provider (`onnxruntime-gpu`, `onnxruntime-directml`), that is used instead.
+
 ## Tag dictionary
 
-To validate Danbooru tags written by the vision model, put a tag list such as `danbooru.csv` (first
-column: tag name) into `<workspace>/dictionaries/`. Without one, validation is skipped.
+To validate Danbooru tags written by a vision LLM, put a tag list such as `danbooru.csv` (first
+column: tag name) into `<workspace>/dictionaries/`. Without one, validation is skipped. The local
+tagger only writes real tags and is not checked.
 
 ## Tests
 

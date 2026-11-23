@@ -229,6 +229,18 @@ const en: Messages = {
     modelTitle: 'Which model looks at the images',
     modelHelp:
       'Any vision model with an OpenAI-compatible API works: a cloud service, or Ollama or LM Studio on this machine. When the images should not go to the cloud, use a local model.',
+    backends: { local: 'Tagger on this machine', llm: 'Vision LLM' },
+    localHelp:
+      'A tag recognition model that runs on this computer: nothing to set up, no GPU needed, and the images never leave the machine. It writes Danbooru tags only and suits anime images best. Downloaded automatically on first use.',
+    localModelOption: (name, gb) => `${name} (about ${gb} GB)`,
+    localModelsHint: 'The first is the most accurate; the others are smaller and faster.',
+    localNoInstructions:
+      'The local tagger does not read instructions, so it will not leave these out by itself: list the tags you do not want under "Tags to never use" below.',
+    skipIdentity: 'Leave out hair, eye colour and body tags automatically',
+    threshold: (value) => `How sure it must be to write a tag: ${value}`,
+    thresholdHelp: 'Lower gives more tags and more mistakes; higher gives fewer, surer tags.',
+    downloading: (percent) => `Downloading the model ${percent}% (first time only)`,
+    loadingModel: 'Loading the model…',
     goalTitle: 'What this LoRA teaches',
     fixedTraits: 'Permanent traits of the character',
     concept: 'The concept being taught',
