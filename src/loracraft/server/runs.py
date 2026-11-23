@@ -102,7 +102,9 @@ class _Progress:
 
     def _fold(self, event: dict) -> None:
         kind = event["type"]
-        if kind == "status":
+        if kind == "resume":
+            self._figures.update(phase=None, error=None)  # they described the session that ended
+        elif kind == "status":
             self._figures["phase"] = event["phase"]
         elif kind == "start":
             self._figures.update(total_steps=event["total_steps"], steps_per_epoch=event["steps_per_epoch"])
@@ -129,7 +131,13 @@ def _summary(row: sqlite3.Row) -> dict:
         data["progress"] = _progress.setdefault(str(directory), _Progress()).read(directory)
     data["checkpoints"] = sorted(p.name for p in (directory / "checkpoints").glob("*.safetensors"))
     data["samples"] = sorted(p.name for p in (directory / "samples").glob("*.png"))
+    data["resumable"] = _resumable(row)
     return data
+
+
+def _resumable(row: sqlite3.Row) -> bool:
+    """Whether the run ended early and its trainer left the state from which to carry on."""
+    return row["status"] in ("stopped", "failed") and (run_dir(row) / "state.pt").is_file()
 
 
 def _parse_etime(text: str) -> int:
@@ -283,7 +291,13 @@ class RunQueue:
 
     def _finalize(self, row: sqlite3.Row, exit_code: int | None) -> None:
         """Record how a run ended, judged by its own event log."""
-        done = next((e for e in reversed(_read_events(run_dir(row))) if e["type"] == "done"), None)
+        done = None
+        for event in reversed(_read_events(run_dir(row))):
+            if event["type"] == "resume":
+                break  # what the trainer reported before the run was resumed says nothing about this time
+            if event["type"] == "done":
+                done = event
+                break
         if done is None or exit_code not in (None, 0):
             status = "failed"
         else:
@@ -361,6 +375,33 @@ def stop_run(run_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     elif row["status"] == "running":
         (run_dir(row) / "stop").touch()
     return {"ok": True}
+
+
+@router.post("/runs/{run_id}/resume")
+def resume_run(run_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Queue a run that ended early again. Its trainer carries on from the state the last one saved."""
+    row = _run(conn, run_id)
+    if not _resumable(row):
+        raise HTTPException(409, "This training has no saved state to continue from")
+    config = TrainConfig.model_validate_json(row["config"])
+    if not Path(config.base_model).is_file():
+        raise HTTPException(400, f"Base model not found: {config.base_model}")
+    missing = sum(not Path(image.path).is_file() for image in config.images)
+    if missing:
+        raise HTTPException(400, f"{missing} of the images this training uses have been deleted from the dataset")
+    if not system.trainer_status()["ready"]:
+        raise HTTPException(400, f"No PyTorch with GPU support in the Python environment of {sys.executable}")
+
+    directory = run_dir(row)
+    (directory / "stop").unlink(missing_ok=True)
+    with open(directory / "events.jsonl", "a+b") as log:
+        log.seek(0)
+        log.truncate(log.read().rfind(b"\n") + 1)  # a trainer that was killed may have left half a line
+        log.write(json.dumps({"type": "resume", "time": time.time()}).encode() + b"\n")
+    conn.execute("UPDATE runs SET status = 'queued', finished_at = NULL WHERE id = ?", (run_id,))
+    conn.commit()
+    queue.notify()
+    return _summary(_run(conn, run_id))
 
 
 class RunPatch(BaseModel):

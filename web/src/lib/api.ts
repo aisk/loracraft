@@ -159,6 +159,8 @@ export interface Run {
   }
   checkpoints: string[]
   samples: string[]
+  /** Ended early with its state saved: training can carry on from where it stopped. */
+  resumable: boolean
 }
 
 export interface RunEvent {
@@ -200,6 +202,7 @@ export const runApi = {
   events: (runId: number, after: number) =>
     request<{ status: RunStatus; events: RunEvent[] }>(`/runs/${runId}/events?after=${after}`),
   stop: (runId: number) => request<{ ok: boolean }>(`/runs/${runId}/stop`, { method: 'POST' }),
+  resume: (runId: number) => request<Run>(`/runs/${runId}/resume`, { method: 'POST' }),
   update: (runId: number, body: Partial<Pick<Run, 'name' | 'notes' | 'rating' | 'best_checkpoint'>>) =>
     request<Run>(`/runs/${runId}`, json('PATCH', body)),
   remove: (runId: number) => request<{ ok: boolean }>(`/runs/${runId}`, { method: 'DELETE' }),

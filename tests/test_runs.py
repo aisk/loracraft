@@ -89,6 +89,38 @@ def test_a_run_stopped_while_queued_is_not_started(client, run, monkeypatch):
     assert row_of(run["id"])["status"] == "stopped"
 
 
+def test_a_stopped_run_with_saved_state_can_be_resumed(client, run):
+    directory = runs.run_dir(row_of(run["id"]))
+    client.post(f"/api/runs/{run['id']}/stop")
+    assert client.get(f"/api/runs/{run['id']}").json()["resumable"] is False  # stopped before training began
+    assert client.post(f"/api/runs/{run['id']}/resume").status_code == 409
+
+    # As left by a trainer that was stopped, then killed while writing one more line.
+    (directory / "state.pt").write_bytes(b"")
+    (directory / "stop").touch()
+    write_events(run["id"], step(1), {"type": "done", "stopped": True}, tail='{"type": "st')
+    assert client.get(f"/api/runs/{run['id']}").json()["resumable"] is True
+
+    resumed = client.post(f"/api/runs/{run['id']}/resume").json()
+    assert (resumed["status"], resumed["resumable"], resumed["progress"]["step"]) == ("queued", False, 1)
+    assert not (directory / "stop").exists()
+    events = client.get(f"/api/runs/{run['id']}/events").json()["events"]
+    assert [e["type"] for e in events] == ["step", "done", "resume"]
+
+    # A trainer that dies without a word has failed, whatever it said before the run was resumed.
+    runs.queue._finalize(row_of(run["id"]), exit_code=None)
+    assert row_of(run["id"])["status"] == "failed"
+
+
+def test_a_run_whose_images_were_deleted_cannot_be_resumed(client, run):
+    client.post(f"/api/runs/{run['id']}/stop")
+    (runs.run_dir(row_of(run["id"])) / "state.pt").write_bytes(b"")
+    image = client.get(f"/api/projects/{run['project_id']}/images").json()[0]
+    client.post("/api/images/delete", json={"image_ids": [image["id"]]})
+    assert client.post(f"/api/runs/{run['id']}/resume").status_code == 400
+    assert row_of(run["id"])["status"] == "stopped"
+
+
 def test_delete_run_removes_its_files_but_not_while_active(client, run):
     directory = runs.run_dir(row_of(run["id"]))
     assert client.delete(f"/api/runs/{run['id']}").status_code == 409  # still queued

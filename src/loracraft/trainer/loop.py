@@ -5,6 +5,7 @@ Run directory layout:
     events.jsonl     output: structured progress events
     checkpoints/     output: one .safetensors per saved epoch
     samples/         output: sample images per epoch
+    state.pt         output: where an unfinished run stands; a trainer started on it carries on from there
     stop             control: create this file to request a graceful stop
 """
 
@@ -140,6 +141,7 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
     checkpoint_dir.mkdir(exist_ok=True)
     sample_dir.mkdir(exist_ok=True)
     stop_flag = run_dir / "stop"
+    state_file = run_dir / "state.pt"
 
     def check_stop(step: int = 0) -> None:
         # Asked between units of work that each take seconds: a training step, an image to cache, a preview.
@@ -232,6 +234,48 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
         ktf.fix_noise_scheduler_betas_for_zero_terminal_snr(noise_scheduler)
     v_prediction = config.prediction_type == "v_prediction"
 
+    # --- Where to start: at the beginning, or where an earlier trainer on this run left off ---
+    step = 0
+    recent_losses: deque[float] = deque(maxlen=100)
+    first_epoch, first_batch, first_batch_rng = 1, 0, None
+    resuming = state_file.exists()
+    if resuming:
+        state = torch.load(state_file, map_location="cpu", weights_only=True)
+        network.load_state_dict(state["network"])
+        optimizer.load_state_dict(state["optimizer"])
+        lr_scheduler.load_state_dict(state["lr_scheduler"])
+        scaler.load_state_dict(state["scaler"])
+        step = state["step"]
+        recent_losses.extend(state["recent_losses"])
+        first_epoch, first_batch, first_batch_rng = state["epoch"], state["next_batch"], state["rng"]
+        rng.setstate(state["epoch_rng"])
+        # A generator whose state was not saved (MPS) must at least not replay the noise of the first steps.
+        torch.manual_seed(config.seed + step)
+        torch.set_rng_state(state["torch_rng"])
+        if device.type == "cuda" and state["cuda_rng"] is not None:
+            torch.cuda.set_rng_state(state["cuda_rng"], device)
+        del state
+
+    def save_state(epoch: int, next_batch: int) -> None:
+        """Record everything a new trainer process needs to carry on with batch `next_batch` of `epoch`."""
+        state = {
+            "epoch": epoch,
+            "next_batch": next_batch,
+            "step": step,
+            "network": network.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "lr_scheduler": lr_scheduler.state_dict(),
+            "scaler": scaler.state_dict(),
+            "epoch_rng": epoch_rng,
+            "rng": rng.getstate(),
+            "torch_rng": torch.get_rng_state(),
+            "cuda_rng": torch.cuda.get_rng_state(device) if device.type == "cuda" else None,
+            "recent_losses": list(recent_losses),
+        }
+        unfinished = state_file.with_suffix(".tmp")
+        torch.save(state, unfinished)
+        os.replace(unfinished, state_file)  # the previous state stays valid until the new one is complete
+
     events.emit(
         "start",
         total_steps=total_steps,
@@ -255,6 +299,9 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
         models.vae.to(device)
         models.vae.enable_tiling()
         for index, sp in enumerate(config.sample_prompts):
+            path = sample_dir / f"e{epoch:03d}_p{index:02d}.png"
+            if path.exists():
+                continue  # made before this run was stopped and resumed
             check_stop(step)
             image = sdxl.sample_image(
                 models,
@@ -270,7 +317,6 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
                 autocast_dtype,
                 config.max_token_chunks,
             )
-            path = sample_dir / f"e{epoch:03d}_p{index:02d}.png"
             image.save(path)
             events.emit("sample", epoch=epoch, step=step, prompt_index=index, path=str(path))
         models.vae.to("cpu")
@@ -278,20 +324,28 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
         network.train()
 
     # --- Loop ---
-    generate_samples(0, 0)  # baseline without any training, to compare against
+    if not resuming:
+        generate_samples(0, 0)  # baseline without any training, to compare against
     events.emit("status", phase="training")
     network.train()
-    step = 0
-    recent_losses: deque[float] = deque(maxlen=100)
 
-    for epoch in range(1, config.epochs + 1):
+    for epoch in range(first_epoch, config.epochs + 1):
+        epoch_rng = rng.getstate()  # from which a resumed run rebuilds this epoch's batch order
         batches = data.make_batches(items, config, rng)
+        if epoch == first_epoch and first_batch_rng is not None:
+            rng.setstate(first_batch_rng)
+        else:
+            first_batch = 0
         optimizer.zero_grad(set_to_none=True)
         accumulated, micro_batches = 0.0, 0  # loss summed over the batches of the current optimizer step
         step_started = time.time()
 
-        for batch_index, batch in enumerate(batches):
-            check_stop(step)
+        for batch_index in range(first_batch, len(batches)):
+            batch = batches[batch_index]
+            if micro_batches == 0 and stop_flag.exists():
+                # Only between optimizer steps: the saved state is then exactly what the next step starts from.
+                save_state(epoch, batch_index)
+                raise StopRequested(step)
 
             latents = data.sample_latents(torch.stack([item.latent_params for item in batch])).to(device)
             latents = latents * sdxl.VAE_SCALING_FACTOR
@@ -373,6 +427,7 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
             accumulated, micro_batches = 0.0, 0
             step_started = time.time()
 
+        save_state(epoch, len(batches))  # before the slow previews, so that stopping during them loses nothing
         is_final = epoch == config.epochs
         if is_final or (config.save_every_n_epochs and epoch % config.save_every_n_epochs == 0):
             save_checkpoint(epoch, step)
@@ -381,4 +436,5 @@ def _run(run_dir: Path, config: TrainConfig, events: EventSink, started_at: floa
             events.emit("status", phase="training")
         events.emit("epoch", epoch=epoch, step=step)
 
+    state_file.unlink(missing_ok=True)  # finished: there is nothing left to resume
     events.emit("done", stopped=False, step=step, seconds=time.time() - started_at)

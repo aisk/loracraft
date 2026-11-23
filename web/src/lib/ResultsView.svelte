@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Download, GalleryHorizontalEnd, Star, Trash2 } from '@lucide/svelte'
+  import { Download, GalleryHorizontalEnd, Play, Star, Trash2 } from '@lucide/svelte'
   import { checkpointEpoch, errorText, parseSampleName, runApi, sampleUrl, type Project, type Run } from './api'
   import { t } from './i18n/index.svelte'
 
@@ -117,6 +117,16 @@
     }, 500)
   }
 
+  async function resume() {
+    message = ''
+    try {
+      await runApi.resume(run!.id)
+      ongototrain() // where its progress is shown
+    } catch (error) {
+      message = String(error)
+    }
+  }
+
   async function remove() {
     const target = run!
     if (!confirm(t().results.confirmDelete(target.name, target.checkpoints.length))) return
@@ -174,6 +184,9 @@
           </p>
           {#if changes.length}
             <p class="muted">{t().results.changes(changes)}</p>
+          {/if}
+          {#if run.resumable}
+            <button class="btn btn-xs btn-ghost mt-1" onclick={resume}><Play />{t().common.resume}</button>
           {/if}
           {#if run.status !== 'queued' && run.status !== 'running'}
             <button class="btn btn-xs btn-ghost text-error mt-1" onclick={remove}><Trash2 />{t().results.deleteRun}</button>

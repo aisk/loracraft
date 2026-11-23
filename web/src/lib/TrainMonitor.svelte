@@ -26,8 +26,16 @@
         const { events } = await runApi.events(id, received)
         if (cancelled) return
         received += events.length
-        const fresh = events.filter((e) => e.type === 'step').map((e) => e.loss_avg as number)
-        if (fresh.length) losses = [...losses, ...fresh]
+        const steps = events.filter((e) => e.type === 'step')
+        if (steps.length) {
+          // Placed by step number: a run resumed after a crash trains the steps since its last saved state again.
+          const next = [...losses]
+          for (const e of steps) {
+            next.length = (e.step as number) - 1
+            next.push(e.loss_avg as number)
+          }
+          losses = next
+        }
       } catch {
         // Transient; the next tick retries.
       } finally {

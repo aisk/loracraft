@@ -116,6 +116,10 @@ It writes `events.jsonl`, `checkpoints/` and `samples/` into the same directory.
 named `stop` there to stop gracefully. Checkpoints use kohya's key names and metadata, so they load
 in ComfyUI and WebUI.
 
+Until a run has finished, the directory also holds `state.pt`: the weights, optimizer and position
+as of the last completed epoch, or of the step at which the run was stopped. Remove `stop` and start
+the worker on the directory again to carry on from there.
+
 ## Tag dictionary
 
 To validate Danbooru tags written by the vision model, put a tag list such as `danbooru.csv` (first

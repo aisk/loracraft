@@ -23,6 +23,17 @@
   }
   const loadImages = async () => (images = await api.listImages(project.id))
 
+  let resumeError = $state('')
+  async function resume(run: Run) {
+    resumeError = ''
+    try {
+      await runApi.resume(run.id)
+      await refresh()
+    } catch (error) {
+      resumeError = String(error)
+    }
+  }
+
   refresh()
   loadImages()
 
@@ -46,12 +57,17 @@
         <button class="btn btn-sm btn-primary" onclick={() => ongotoresults(last.id)}>{t().train.pickBest}</button>
       {:else if last.status === 'stopped'}
         <span>{t().train.stopped(last.name, last.checkpoints.length)}</span>
+        {#if last.resumable}<button class="btn btn-sm btn-primary" onclick={() => resume(last)}>{t().common.resume}</button>{/if}
         {#if last.checkpoints.length}<button class="btn btn-sm" onclick={() => ongotoresults(last.id)}>{t().train.viewResults}</button>{/if}
       {:else}
         <span>{t().train.failed(last.name, last.progress.error ?? t().train.crashed)}</span>
+        {#if last.resumable}<button class="btn btn-sm" onclick={() => resume(last)}>{t().common.resume}</button>{/if}
       {/if}
       <button class="btn btn-sm btn-ghost btn-square" title={t().common.close} onclick={() => (dismissed = last.id)}><X /></button>
     </div>
+  {/if}
+  {#if resumeError}
+    <div class="banner failed"><span>{resumeError}</span></div>
   {/if}
     <TrainSetup
       {project}
