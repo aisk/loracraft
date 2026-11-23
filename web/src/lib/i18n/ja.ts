@@ -229,7 +229,10 @@ const ja: Messages = {
     downloading: (percent) => `モデルをダウンロード中 ${percent}%（初回のみ）`,
     loadingModel: 'モデルを読み込み中…',
     goalTitle: 'この LoRA が覚えるもの',
-    fixedTraits: 'このキャラクター固有の特徴',
+    fixedTraits: '固有の特徴：これらのタグはキャプションに書きません',
+    triggerLine: 'トリガーワード %s が各キャプションの先頭に入り、書かなかった特徴はこの語に結びつきます。',
+    noTrigger:
+      'このプロジェクトにはまだトリガーワードがなく、書かなかった特徴を呼び出す語がありません。プロジェクト設定で指定できます。',
     concept: '覚えさせる概念',
     conceptPlaceholder: '例：特定の赤いチャイナドレス',
     formatTitle: 'キャプションの書き方',

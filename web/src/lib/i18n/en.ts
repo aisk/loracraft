@@ -242,7 +242,10 @@ const en: Messages = {
     downloading: (percent) => `Downloading the model ${percent}% (first time only)`,
     loadingModel: 'Loading the model…',
     goalTitle: 'What this LoRA teaches',
-    fixedTraits: 'Permanent traits of the character',
+    fixedTraits: 'Permanent traits: these tags are kept out of the captions',
+    triggerLine: 'The trigger word %s goes at the start of every caption and stands for whatever the captions leave out.',
+    noTrigger:
+      'This project has no trigger word yet, so nothing stands for what the captions leave out. You can set one in the project settings.',
     concept: 'The concept being taught',
     conceptPlaceholder: 'For example: one particular red qipao',
     formatTitle: 'How captions are written',

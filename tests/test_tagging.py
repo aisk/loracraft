@@ -91,6 +91,12 @@ def test_local_suggestion_for_a_character_leaves_out_who_they_are(monkeypatch):
     }
 
 
+def test_local_suggestion_without_a_trigger_keeps_the_character_name():
+    found = {"general": ["1girl", "long_hair"], "character": ["some_character"]}
+    suggestion = tagging.build_local_suggestion(found, TaggingProfile(goal="character"), "")
+    assert suggestion["caption"] == "some character, 1girl"
+
+
 def test_local_suggestion_for_a_style_names_the_character():
     found = {"general": ["1girl", "long_hair"], "character": ["some_character"]}
     suggestion = tagging.build_local_suggestion(found, TaggingProfile(goal="style"), "")

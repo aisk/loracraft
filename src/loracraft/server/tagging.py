@@ -163,7 +163,8 @@ def build_local_suggestion(found: dict[str, list[str]], profile: TaggingProfile,
     characters = [normalize_tag(t) for t in found["character"]]
     identity: set[str] = set()
     if profile.goal == "character":
-        identity.update(characters)  # the trigger word stands for the character, not their name
+        if trigger:
+            identity.update(characters)  # the trigger word stands for the character, not their name
         if profile.skip_identity_tags:
             identity.update(t for t in general if local_tagger.is_identity_tag(t))
     return build_suggestion(

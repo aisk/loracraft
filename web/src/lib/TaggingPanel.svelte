@@ -231,6 +231,12 @@
             {/each}
           </div>
           <p class="help">{t().tagging.goals[profile.goal].hint}</p>
+          {#if project.trigger}
+            {@const [before, after] = around(t().tagging.triggerLine)}
+            <p class="help">{before}<code>{project.trigger}</code>{after}</p>
+          {:else if profile.goal === 'character' || profile.goal === 'concept'}
+            <p class="help warn-text">{t().tagging.noTrigger}</p>
+          {/if}
           {#if isLocal && (profile.goal === 'style' || profile.goal === 'concept')}
             <p class="help">{t().tagging.localNoInstructions}</p>
           {/if}
@@ -503,6 +509,9 @@
     white-space: pre-wrap;
     max-height: 260px;
     overflow-y: auto;
+  }
+  .warn-text {
+    color: var(--warn);
   }
   .error {
     margin: 0;
