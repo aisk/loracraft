@@ -159,6 +159,16 @@
     upload([...(event.dataTransfer?.files ?? [])])
   }
 
+  // Images copied anywhere (a screenshot, "copy image" in a browser, files in the file manager) come in with Ctrl+V.
+  function onPaste(event: ClipboardEvent) {
+    // In a text box, paste means text, even when the clipboard also carries a picture of it (as from a spreadsheet).
+    if (showTagging || (event.target as HTMLElement).matches('input, textarea, select')) return
+    const files = [...(event.clipboardData?.files ?? [])]
+    if (!files.length) return
+    event.preventDefault()
+    upload(files)
+  }
+
   function deleteSelected() {
     const ids = [...selected]
     if (!confirm(t().dataset.confirmDelete(ids.length))) return
@@ -202,7 +212,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onpaste={onPaste} />
 
 <div class="dataset">
   <!-- Left: what is in the captions, and what needs attention -->
